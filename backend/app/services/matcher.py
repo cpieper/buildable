@@ -51,55 +51,78 @@ def match_set(
 
     available = _available_quantities(inventory)
     allocations: list[MatchAllocation] = []
-    missing: list[MissingRequirement] = []
     exact_quantity = 0
     color_substitution_quantity = 0
     equivalence_substitution_quantity = 0
+    remaining = {
+        (required.part_num, required.color_id): required.quantity
+        for required in requirements
+    }
+
+    def allocate(
+        required: EffectivePartRow,
+        supplied_part_num: str,
+        supplied_color_id: int,
+        kind: Literal[
+            "exact", "color", "equivalent_exact_color", "equivalent_color"
+        ],
+    ) -> None:
+        nonlocal exact_quantity
+        nonlocal color_substitution_quantity
+        nonlocal equivalence_substitution_quantity
+        required_key = (required.part_num, required.color_id)
+        supplied_key = (supplied_part_num, supplied_color_id)
+        quantity = min(remaining[required_key], available.get(supplied_key, 0))
+        if quantity == 0:
+            return
+        available[supplied_key] -= quantity
+        remaining[required_key] -= quantity
+        allocations.append(
+            MatchAllocation(
+                required.part_num,
+                required.color_id,
+                supplied_part_num,
+                supplied_color_id,
+                quantity,
+                kind,
+            )
+        )
+        if kind == "exact":
+            exact_quantity += quantity
+        elif kind == "color":
+            color_substitution_quantity += quantity
+        else:
+            equivalence_substitution_quantity += quantity
 
     for required in requirements:
-        remaining = required.quantity
-        passes = (
-            [(required.part_num, required.color_id, "exact")],
-            _same_part_other_colors(required, available),
-            _equivalent_exact_color(required, equivalents),
-            _equivalent_other_colors(required, available, equivalents),
+        allocate(required, required.part_num, required.color_id, "exact")
+    for required in requirements:
+        for supplied_part_num, supplied_color_id, kind in _same_part_other_colors(
+            required, available
+        ):
+            allocate(required, supplied_part_num, supplied_color_id, kind)
+    for required in requirements:
+        for supplied_part_num, supplied_color_id, kind in _equivalent_exact_color(
+            required, equivalents
+        ):
+            allocate(required, supplied_part_num, supplied_color_id, kind)
+    for required in requirements:
+        for supplied_part_num, supplied_color_id, kind in _equivalent_other_colors(
+            required, available, equivalents
+        ):
+            allocate(required, supplied_part_num, supplied_color_id, kind)
+
+    missing = [
+        MissingRequirement(
+            required.part_num,
+            required.part_name,
+            required.color_id,
+            required.color_name,
+            remaining[(required.part_num, required.color_id)],
         )
-        for candidates in passes:
-            for supplied_part_num, supplied_color_id, kind in candidates:
-                if remaining == 0:
-                    break
-                supplied_key = (supplied_part_num, supplied_color_id)
-                quantity = min(remaining, available.get(supplied_key, 0))
-                if quantity == 0:
-                    continue
-                available[supplied_key] -= quantity
-                remaining -= quantity
-                allocations.append(
-                    MatchAllocation(
-                        required.part_num,
-                        required.color_id,
-                        supplied_part_num,
-                        supplied_color_id,
-                        quantity,
-                        kind,
-                    )
-                )
-                if kind == "exact":
-                    exact_quantity += quantity
-                elif kind == "color":
-                    color_substitution_quantity += quantity
-                else:
-                    equivalence_substitution_quantity += quantity
-        if remaining:
-            missing.append(
-                MissingRequirement(
-                    required.part_num,
-                    required.part_name,
-                    required.color_id,
-                    required.color_name,
-                    remaining,
-                )
-            )
+        for required in requirements
+        if remaining[(required.part_num, required.color_id)]
+    ]
 
     required_quantity = sum(required.quantity for required in requirements)
     missing_quantity = sum(value.quantity for value in missing)

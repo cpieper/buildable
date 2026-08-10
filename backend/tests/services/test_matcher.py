@@ -111,6 +111,19 @@ def test_one_available_piece_cannot_satisfy_two_requirements() -> None:
     assert result.missing_quantity == 1
 
 
+def test_exact_pass_precedes_color_substitutions_for_all_requirements() -> None:
+    result = match_set(
+        target([row("3001", 1, 1), row("3001", 5, 1)]),
+        snapshot([item("3001", 5, 1)]),
+        {},
+    )
+
+    assert [(value.required_color_id, value.kind) for value in result.allocations] == [
+        (5, "exact")
+    ]
+    assert [(value.color_id, value.quantity) for value in result.missing] == [(1, 1)]
+
+
 def test_target_spares_are_ignored() -> None:
     result = match_set(
         target([row("3001", 5, 1), row("6141", 1, 4, is_spare=True)]),
