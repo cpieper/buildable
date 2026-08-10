@@ -95,6 +95,72 @@ def test_metadata_override_delete_and_validation(
     assert authenticated.get("/api/overrides/sets/1234-1").status_code == 404
 
 
+def test_metadata_override_partial_updates_preserve_and_explicit_null_clears_fields(
+    authenticated: TestClient,
+) -> None:
+    _catalog(authenticated)
+    initial = authenticated.put(
+        "/api/overrides/sets/1234-1",
+        json={"name": "Corrected", "year": 2000, "reason": "Initial correction"},
+    )
+    assert initial.status_code == 200
+
+    partial = authenticated.put(
+        "/api/overrides/sets/1234-1",
+        json={"year": 2001, "reason": "Updated year"},
+    )
+    assert partial.status_code == 200
+    assert partial.json()["override"]["name"] == "Corrected"
+    assert partial.json()["effective"]["name"] == "Corrected"
+    assert partial.json()["effective"]["year"] == 2001
+
+    clear_name = authenticated.put(
+        "/api/overrides/sets/1234-1",
+        json={"name": None, "reason": "Name was wrong"},
+    )
+    assert clear_name.status_code == 200
+    assert clear_name.json()["override"]["name"] is None
+    assert clear_name.json()["effective"]["name"] == "Original"
+    assert clear_name.json()["effective"]["year"] == 2001
+
+    clear_last = authenticated.put(
+        "/api/overrides/sets/1234-1",
+        json={"year": None, "reason": "Undo final correction"},
+    )
+    assert clear_last.status_code == 200
+    assert clear_last.json()["override"] is None
+    assert clear_last.json()["has_local_overrides"] is False
+
+
+def test_part_override_response_aggregates_imported_sources(
+    authenticated: TestClient, session_factory: sessionmaker[Session]
+) -> None:
+    _catalog(authenticated)
+    with session_factory.begin() as session:
+        session.add(
+            CatalogSetPart(
+                set_num="1234-1",
+                part_num="3001",
+                color_id=5,
+                quantity=3,
+                is_spare=False,
+                source_kind="minifig",
+                source_id="extra-source",
+            )
+        )
+
+    response = authenticated.put(
+        "/api/overrides/sets/1234-1/parts/3001/5",
+        json={"operation": "upsert", "quantity": 4, "is_spare": False, "reason": "Counted from instructions"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["imported"]["quantity"] == 5
+    assert response.json()["imported"]["source_kind"] == "mixed"
+    assert response.json()["override"]["quantity"] == 4
+    assert response.json()["effective"]["quantity"] == 4
+
+
 def test_part_override_enforces_identity_and_operation_contract(authenticated: TestClient) -> None:
     _catalog(authenticated)
     bad_upsert = authenticated.put(

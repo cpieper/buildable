@@ -11,7 +11,6 @@ from app.models import (
     CatalogPart,
     CatalogSet,
     CatalogSetOverride,
-    CatalogSetPart,
     CatalogSetPartOverride,
 )
 from app.repositories.catalog import CatalogRepository, EffectivePartRow
@@ -53,17 +52,12 @@ def _part_data(row: EffectivePartRow) -> dict[str, object]:
 
 
 def _part_response(session: Session, override: CatalogSetPartOverride) -> PartCorrectionResponse:
-    imported_row = session.execute(
-        select(CatalogSetPart, CatalogPart, CatalogColor)
-        .join(CatalogPart, CatalogPart.part_num == CatalogSetPart.part_num)
-        .join(CatalogColor, CatalogColor.id == CatalogSetPart.color_id)
-        .where(CatalogSetPart.set_num == override.set_num, CatalogSetPart.part_num == override.part_num, CatalogSetPart.color_id == override.color_id, CatalogSetPart.is_spare == override.is_spare)
-    ).first()
-    imported = None
-    if imported_row is not None:
-        row, part, color = imported_row
-        imported = {"part_num": part.part_num, "part_name": part.name, "color_id": color.id, "color_name": color.name, "rgb_hex": color.rgb_hex, "quantity": row.quantity, "is_spare": row.is_spare, "source_kind": row.source_kind, "image_url": part.image_url}
-    effective_set = CatalogRepository(session).get_effective_set(override.set_num)
+    repository = CatalogRepository(session)
+    imported_row = repository._load_imported_parts(override.set_num).get(
+        (override.part_num, override.color_id, override.is_spare)
+    )
+    imported = None if imported_row is None else _part_data(imported_row)
+    effective_set = repository.get_effective_set(override.set_num)
     assert effective_set is not None
     effective_row = next((row for row in effective_set.parts if (row.part_num, row.color_id, row.is_spare) == (override.part_num, override.color_id, override.is_spare)), None)
     return PartCorrectionResponse(imported=imported, override={"part_num": override.part_num, "color_id": override.color_id, "is_spare": override.is_spare, "operation": override.operation, "quantity": override.quantity, "reason": override.reason}, effective=None if effective_row is None else _part_data(effective_row), has_local_overrides=effective_set.has_local_overrides)
@@ -73,11 +67,19 @@ def _part_response(session: Session, override: CatalogSetPartOverride) -> PartCo
 def put_set_override(set_num: str, payload: SetOverrideWrite, session: Annotated[Session, Depends(get_session)]) -> SetCorrectionResponse:
     _set_or_404(session, set_num)
     override = session.get(CatalogSetOverride, set_num)
+    changes = payload.model_dump(include=payload.model_fields_set)
+    correction_fields = set(_SET_FIELDS).intersection(changes)
     if override is None:
+        if not any(changes[field] is not None for field in correction_fields):
+            return _set_response(session, set_num)
         override = CatalogSetOverride(set_num=set_num)
         session.add(override)
-    for field, value in payload.model_dump().items():
+    for field in correction_fields:
+        value = changes[field]
         setattr(override, field, value)
+    override.reason = payload.reason
+    if all(getattr(override, field) is None for field in _SET_FIELDS):
+        session.delete(override)
     session.commit()
     return _set_response(session, set_num)
 
