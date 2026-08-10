@@ -5,11 +5,12 @@ import pytest
 from alembic import command
 from alembic.config import Config
 from fastapi.testclient import TestClient
-from sqlalchemy import Engine, create_engine, text
+from sqlalchemy import Engine, create_engine, inspect, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.config import Settings
+from app.db import Base, create_db_engine
 from app.main import create_app
 from app.models import (
     CatalogColor,
@@ -19,6 +20,7 @@ from app.models import (
     CatalogSetPart,
     CatalogSetPartOverride,
     OwnedSet,
+    OwnedSetMissingPart,
 )
 from app.repositories.catalog import CatalogRepository
 
@@ -62,6 +64,36 @@ def seed_catalog_part_row(
     source_kind: str = "part",
     source_id: str = "1",
 ) -> None:
+    seed_catalog_part_and_color(
+        session,
+        part_num=part_num,
+        color_id=color_id,
+        part_name=part_name,
+        color_name=color_name,
+        rgb_hex=rgb_hex,
+    )
+    session.add(
+        CatalogSetPart(
+            set_num=set_num,
+            part_num=part_num,
+            color_id=color_id,
+            quantity=quantity,
+            is_spare=is_spare,
+            source_kind=source_kind,
+            source_id=source_id,
+        )
+    )
+
+
+def seed_catalog_part_and_color(
+    session: Session,
+    *,
+    part_num: str = "3001",
+    color_id: int = 5,
+    part_name: str = "Brick 2 x 4",
+    color_name: str = "Red",
+    rgb_hex: str = "C91A09",
+) -> None:
     if session.get(CatalogPart, part_num) is None:
         session.add(
             CatalogPart(
@@ -82,17 +114,6 @@ def seed_catalog_part_row(
             )
         )
     session.flush()
-    session.add(
-        CatalogSetPart(
-            set_num=set_num,
-            part_num=part_num,
-            color_id=color_id,
-            quantity=quantity,
-            is_spare=is_spare,
-            source_kind=source_kind,
-            source_id=source_id,
-        )
-    )
 
 
 def test_effective_set_applies_metadata_and_inventory_overrides(
@@ -242,14 +263,45 @@ def test_search_sets_uses_effective_metadata_and_limit(session: Session) -> None
     )
 
 
-def test_schema_rejects_invalid_quantities_and_enum_values(session: Session) -> None:
+def test_schema_rejects_nonpositive_catalog_set_part_quantity(
+    session: Session,
+) -> None:
     seed_catalog_set(session, set_num="1234-1", name="Original")
-    seed_catalog_part_row(session, "1234-1", "3001", 5, quantity=0)
+    seed_catalog_part_and_color(session)
+    session.commit()
+    session.add(
+        CatalogSetPart(
+            set_num="1234-1",
+            part_num="3001",
+            color_id=5,
+            quantity=0,
+            is_spare=False,
+            source_kind="part",
+            source_id="invalid",
+        )
+    )
 
-    with pytest.raises(IntegrityError):
-        session.commit()
-    session.rollback()
+    _assert_check_constraint(session, "ck_catalog_set_parts_quantity")
 
+
+def test_schema_rejects_nonpositive_owned_set_quantity(session: Session) -> None:
+    seed_catalog_set(session, set_num="1234-1", name="Original")
+    session.commit()
+    session.add(
+        OwnedSet(
+            set_num="1234-1",
+            quantity=0,
+            completeness="complete",
+            unknown_missing_count=0,
+        )
+    )
+
+    _assert_check_constraint(session, "ck_owned_sets_quantity")
+
+
+def test_schema_rejects_invalid_owned_set_completeness(session: Session) -> None:
+    seed_catalog_set(session, set_num="1234-1", name="Original")
+    session.commit()
     session.add(
         OwnedSet(
             set_num="1234-1",
@@ -258,10 +310,81 @@ def test_schema_rejects_invalid_quantities_and_enum_values(session: Session) -> 
             unknown_missing_count=0,
         )
     )
-    with pytest.raises(IntegrityError):
-        session.commit()
-    session.rollback()
 
+    _assert_check_constraint(session, "ck_owned_sets_completeness")
+
+
+def test_schema_rejects_nonpositive_missing_part_quantity(
+    session: Session,
+) -> None:
+    seed_catalog_set(session, set_num="1234-1", name="Original")
+    seed_catalog_part_and_color(session)
+    owned_set = OwnedSet(
+        set_num="1234-1",
+        quantity=1,
+        completeness="complete",
+        unknown_missing_count=0,
+    )
+    session.add(owned_set)
+    session.commit()
+    session.add(
+        OwnedSetMissingPart(
+            owned_set_id=owned_set.id,
+            part_num="3001",
+            color_id=5,
+            quantity=0,
+        )
+    )
+
+    _assert_check_constraint(session, "ck_owned_set_missing_parts_quantity")
+
+
+def test_schema_rejects_invalid_inventory_override_operation(
+    session: Session,
+) -> None:
+    seed_catalog_set(session, set_num="1234-1", name="Original")
+    seed_catalog_part_and_color(session)
+    session.commit()
+    session.add(
+        CatalogSetPartOverride(
+            set_num="1234-1",
+            part_num="3001",
+            color_id=5,
+            operation="replace",
+            quantity=1,
+            is_spare=False,
+        )
+    )
+
+    _assert_check_constraint(session, "ck_catalog_set_part_overrides_operation")
+
+
+def test_schema_rejects_nonpositive_upsert_override_quantity(
+    session: Session,
+) -> None:
+    seed_catalog_set(session, set_num="1234-1", name="Original")
+    seed_catalog_part_and_color(session)
+    session.commit()
+    session.add(
+        CatalogSetPartOverride(
+            set_num="1234-1",
+            part_num="3001",
+            color_id=5,
+            operation="upsert",
+            quantity=0,
+            is_spare=False,
+        )
+    )
+
+    _assert_check_constraint(
+        session, "ck_catalog_set_part_overrides_operation_quantity"
+    )
+
+
+def test_schema_rejects_quantity_for_delete_override(session: Session) -> None:
+    seed_catalog_set(session, set_num="1234-1", name="Original")
+    seed_catalog_part_and_color(session)
+    session.commit()
     session.add(
         CatalogSetPartOverride(
             set_num="1234-1",
@@ -272,8 +395,17 @@ def test_schema_rejects_invalid_quantities_and_enum_values(session: Session) -> 
             is_spare=False,
         )
     )
-    with pytest.raises(IntegrityError):
+
+    _assert_check_constraint(
+        session, "ck_catalog_set_part_overrides_operation_quantity"
+    )
+
+
+def _assert_check_constraint(session: Session, constraint_name: str) -> None:
+    with pytest.raises(IntegrityError) as error:
         session.commit()
+
+    assert str(error.value.orig) == f"CHECK constraint failed: {constraint_name}"
 
 
 def test_sqlite_connections_enable_required_pragmas(engine: Engine) -> None:
@@ -326,6 +458,46 @@ def test_alembic_upgrade_creates_missing_sqlite_parent_directory(
     assert revision == "0001_initial_schema"
 
 
+def test_create_all_and_alembic_have_identical_server_defaults(
+    tmp_path: Path,
+) -> None:
+    create_all_engine = create_db_engine(f"sqlite:///{tmp_path / 'create-all.db'}")
+    Base.metadata.create_all(create_all_engine)
+
+    migration_path = tmp_path / "migration.db"
+    config = Config(Path(__file__).resolve().parents[2] / "alembic.ini")
+    config.set_main_option("sqlalchemy.url", f"sqlite:///{migration_path}")
+    command.upgrade(config, "head")
+    migration_engine = create_engine(f"sqlite:///{migration_path}")
+
+    expected = {
+        ("app_settings", "secret"): "0",
+        ("app_settings", "updated_at"): "CURRENT_TIMESTAMP",
+        ("catalog_colors", "external_ids_json"): "'{}'",
+        ("catalog_parts", "external_ids_json"): "'{}'",
+        ("catalog_set_overrides", "updated_at"): "CURRENT_TIMESTAMP",
+        ("catalog_set_part_overrides", "is_spare"): "0",
+        ("catalog_set_part_overrides", "updated_at"): "CURRENT_TIMESTAMP",
+        ("catalog_set_parts", "is_spare"): "0",
+        ("catalog_sets", "imported_at"): "CURRENT_TIMESTAMP",
+        ("equivalence_groups", "created_at"): "CURRENT_TIMESTAMP",
+        ("equivalence_groups", "updated_at"): "CURRENT_TIMESTAMP",
+        ("owned_sets", "added_at"): "CURRENT_TIMESTAMP",
+        ("owned_sets", "completeness"): "'complete'",
+        ("owned_sets", "quantity"): "1",
+        ("owned_sets", "unknown_missing_count"): "0",
+        ("owned_sets", "updated_at"): "CURRENT_TIMESTAMP",
+        ("sync_runs", "started_at"): "CURRENT_TIMESTAMP",
+    }
+
+    try:
+        assert _server_defaults(create_all_engine) == expected
+        assert _server_defaults(migration_engine) == expected
+    finally:
+        create_all_engine.dispose()
+        migration_engine.dispose()
+
+
 def test_injected_session_factory_skips_startup_migration(
     tmp_path: Path,
     session_factory: sessionmaker[Session],
@@ -343,3 +515,13 @@ def test_injected_session_factory_skips_startup_migration(
 
     assert response.status_code == 200
     assert not data_dir.exists()
+
+
+def _server_defaults(engine: Engine) -> dict[tuple[str, str], str]:
+    inspector = inspect(engine)
+    return {
+        (table_name, column["name"]): column["default"]
+        for table_name in inspector.get_table_names()
+        for column in inspector.get_columns(table_name)
+        if column["default"] is not None
+    }

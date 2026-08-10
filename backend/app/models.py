@@ -9,6 +9,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -37,7 +38,10 @@ class CatalogSet(Base):
     source: Mapped[str] = mapped_column(String, nullable=False)
     source_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     imported_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=utc_now
+        DateTime(timezone=True),
+        nullable=False,
+        default=utc_now,
+        server_default=text("CURRENT_TIMESTAMP"),
     )
 
 
@@ -48,7 +52,9 @@ class CatalogPart(Base):
     name: Mapped[str] = mapped_column(String, nullable=False)
     category_name: Mapped[str | None] = mapped_column(String)
     image_url: Mapped[str | None] = mapped_column(String)
-    external_ids_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+    external_ids_json: Mapped[str] = mapped_column(
+        Text, nullable=False, default="{}", server_default=text("'{}'")
+    )
 
 
 class CatalogColor(Base):
@@ -57,7 +63,9 @@ class CatalogColor(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     name: Mapped[str] = mapped_column(String, nullable=False)
     rgb_hex: Mapped[str] = mapped_column(String, nullable=False)
-    external_ids_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+    external_ids_json: Mapped[str] = mapped_column(
+        Text, nullable=False, default="{}", server_default=text("'{}'")
+    )
 
 
 class CatalogSetPart(Base):
@@ -86,7 +94,9 @@ class CatalogSetPart(Base):
         ForeignKey("catalog_colors.id"), nullable=False
     )
     quantity: Mapped[int] = mapped_column(Integer, nullable=False)
-    is_spare: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    is_spare: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("0")
+    )
     source_kind: Mapped[str] = mapped_column(String, nullable=False)
     source_id: Mapped[str] = mapped_column(String, nullable=False)
 
@@ -109,20 +119,32 @@ class OwnedSet(Base):
     set_num: Mapped[str] = mapped_column(
         ForeignKey("catalog_sets.set_num"), nullable=False, index=True
     )
-    quantity: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    quantity: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=1, server_default=text("1")
+    )
     completeness: Mapped[str] = mapped_column(
-        String, nullable=False, default="complete"
+        String,
+        nullable=False,
+        default="complete",
+        server_default=text("'complete'"),
     )
     unknown_missing_count: Mapped[int] = mapped_column(
-        Integer, nullable=False, default=0
+        Integer, nullable=False, default=0, server_default=text("0")
     )
     unknown_missing_note: Mapped[str | None] = mapped_column(Text)
     notes: Mapped[str | None] = mapped_column(Text)
     added_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=utc_now
+        DateTime(timezone=True),
+        nullable=False,
+        default=utc_now,
+        server_default=text("CURRENT_TIMESTAMP"),
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=utc_now, onupdate=utc_now
+        DateTime(timezone=True),
+        nullable=False,
+        default=utc_now,
+        onupdate=utc_now,
+        server_default=text("CURRENT_TIMESTAMP"),
     )
 
 
@@ -161,7 +183,11 @@ class CatalogSetOverride(Base):
     instructions_url: Mapped[str | None] = mapped_column(String)
     reason: Mapped[str | None] = mapped_column(Text)
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=utc_now, onupdate=utc_now
+        DateTime(timezone=True),
+        nullable=False,
+        default=utc_now,
+        onupdate=utc_now,
+        server_default=text("CURRENT_TIMESTAMP"),
     )
 
 
@@ -198,12 +224,18 @@ class CatalogSetPartOverride(Base):
     color_id: Mapped[int] = mapped_column(
         ForeignKey("catalog_colors.id"), nullable=False
     )
-    is_spare: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    is_spare: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("0")
+    )
     operation: Mapped[str] = mapped_column(String, nullable=False)
     quantity: Mapped[int | None] = mapped_column(Integer)
     reason: Mapped[str | None] = mapped_column(Text)
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=utc_now, onupdate=utc_now
+        DateTime(timezone=True),
+        nullable=False,
+        default=utc_now,
+        onupdate=utc_now,
+        server_default=text("CURRENT_TIMESTAMP"),
     )
 
 
@@ -214,10 +246,17 @@ class EquivalenceGroup(Base):
     name: Mapped[str] = mapped_column(String, nullable=False, unique=True)
     notes: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=utc_now
+        DateTime(timezone=True),
+        nullable=False,
+        default=utc_now,
+        server_default=text("CURRENT_TIMESTAMP"),
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=utc_now, onupdate=utc_now
+        DateTime(timezone=True),
+        nullable=False,
+        default=utc_now,
+        onupdate=utc_now,
+        server_default=text("CURRENT_TIMESTAMP"),
     )
 
 
@@ -237,9 +276,15 @@ class AppSetting(Base):
 
     key: Mapped[str] = mapped_column(String, primary_key=True)
     value: Mapped[str] = mapped_column(Text, nullable=False)
-    secret: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    secret: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("0")
+    )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=utc_now, onupdate=utc_now
+        DateTime(timezone=True),
+        nullable=False,
+        default=utc_now,
+        onupdate=utc_now,
+        server_default=text("CURRENT_TIMESTAMP"),
     )
 
 
@@ -250,7 +295,10 @@ class SyncRun(Base):
     source: Mapped[str] = mapped_column(String, nullable=False)
     status: Mapped[str] = mapped_column(String, nullable=False)
     started_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=utc_now
+        DateTime(timezone=True),
+        nullable=False,
+        default=utc_now,
+        server_default=text("CURRENT_TIMESTAMP"),
     )
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     summary_json: Mapped[str | None] = mapped_column(Text)
