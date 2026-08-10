@@ -1,4 +1,4 @@
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Iterator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from app.api.auth import router as auth_router
 from app.config import Settings, get_settings
-from app.db import upgrade_database
+from app.db import get_session, upgrade_database
 
 
 def create_app(
@@ -25,6 +25,13 @@ def create_app(
 
     app = FastAPI(title="What2Build", version="0.1.0", lifespan=lifespan)
     app.state.settings = app_settings
+    if session_factory is not None:
+
+        def get_injected_session() -> Iterator[Session]:
+            with session_factory() as session:
+                yield session
+
+        app.dependency_overrides[get_session] = get_injected_session
     app.include_router(auth_router)
 
     @app.get("/api/health", tags=["system"])

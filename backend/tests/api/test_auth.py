@@ -1,5 +1,7 @@
 from collections.abc import Iterator
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from threading import Barrier
 from time import time
 
 import pytest
@@ -13,6 +15,7 @@ from app.config import Settings
 from app.db import get_session
 from app.main import create_app
 from app.models import AppSetting
+from app.services import auth as auth_service
 
 
 class PasswordStoreFixture:
@@ -87,6 +90,27 @@ def test_login_sets_secure_cookie_when_configured(
 
     assert response.status_code == 204
     assert "Secure" in response.headers["set-cookie"]
+
+
+def test_create_app_wires_injected_session_factory_to_auth_requests(
+    tmp_path: Path,
+    session_factory: sessionmaker[Session],
+    password_store: PasswordStoreFixture,
+) -> None:
+    password_store.set_password("injected-database-password")
+    settings = Settings(
+        data_dir=tmp_path / "unused-data",
+        database_url=f"sqlite:///{tmp_path / 'different-unused.db'}",
+    )
+    app = create_app(settings=settings, session_factory=session_factory)
+
+    with TestClient(app) as injected_client:
+        response = injected_client.post(
+            "/api/auth/login",
+            json={"password": "injected-database-password"},
+        )
+
+    assert response.status_code == 204
 
 
 def test_login_normalizes_unconfigured_password_error(client: TestClient) -> None:
@@ -192,6 +216,66 @@ def test_session_rejects_signed_cookie_with_stale_revision(
         revision = session.get_one(AppSetting, "auth.revision")
         revision.value = "2"
 
+    assert client.get("/api/auth/session").status_code == 401
+
+
+def test_concurrent_password_resets_publish_distinct_revisions(
+    client: TestClient,
+    password_store: PasswordStoreFixture,
+    session_factory: sessionmaker[Session],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    password_store.set_password("initial-password", revision=1)
+    hash_barrier = Barrier(2)
+
+    class CoordinatedHasher:
+        def hash(self, password: str) -> str:
+            hash_barrier.wait(timeout=5)
+            return f"test-hash:{password}"
+
+    monkeypatch.setattr(auth_service, "password_hash", CoordinatedHasher())
+
+    def reset_password(password: str) -> int:
+        with session_factory() as session:
+            return auth_service.PasswordStore(session).set_password(password)
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        revisions = list(
+            executor.map(reset_password, ["first-reset", "second-reset"])
+        )
+
+    assert sorted(revisions) == [2, 3]
+    earlier_token = auth_service.SessionSigner(
+        "development-only-change-me"
+    ).create(2)
+    client.cookies.set("what2build_session", earlier_token)
+    assert client.get("/api/auth/session").status_code == 401
+
+
+@pytest.mark.parametrize("corrupt_revision", [None, "malformed", "0", "-1"])
+def test_password_reset_repairs_corrupt_revision_without_recycling_old_cookie(
+    corrupt_revision: str | None,
+    client: TestClient,
+    password_store: PasswordStoreFixture,
+    session_factory: sessionmaker[Session],
+) -> None:
+    password_store.set_password("old-password", revision=1)
+    client.post("/api/auth/login", json={"password": "old-password"})
+    revision_one_cookie = client.cookies.get("what2build_session")
+    with session_factory.begin() as session:
+        revision_setting = session.get_one(AppSetting, "auth.revision")
+        if corrupt_revision is None:
+            session.delete(revision_setting)
+        else:
+            revision_setting.value = corrupt_revision
+
+    with session_factory() as session:
+        repaired_revision = auth_service.PasswordStore(session).set_password(
+            "new-password"
+        )
+
+    assert repaired_revision > 1
+    client.cookies.set("what2build_session", revision_one_cookie)
     assert client.get("/api/auth/session").status_code == 401
 
 
