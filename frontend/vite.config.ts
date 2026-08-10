@@ -17,6 +17,6 @@ export default defineConfig({
 		setupFiles: ['./src/test/setup.ts']
 	},
 	plugins: [
-		sveltekit({ adapter: adapter() })
+		sveltekit({ adapter: adapter({ fallback: 'index.html' }) })
 	]
 });
