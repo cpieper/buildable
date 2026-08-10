@@ -1,9 +1,8 @@
-<svelte:head>
-	<title>What2Build</title>
-	<meta name="description" content="LEGO inventory" />
-</svelte:head>
-
-<main>
-	<h1>What2Build</h1>
-	<p>LEGO inventory</p>
-</main>
+<script lang="ts">
+	import { goto } from '$app/navigation';
+	import { onMount } from 'svelte';
+	import { session } from '$lib/stores/session.svelte';
+	onMount(async () => { await session.load(); void goto(session.authenticated ? '/buildable' : '/unlock'); });
+</script>
+<p class="redirecting">Opening workshop…</p>
+<style>.redirecting { padding:24px; color:var(--ink-muted); }</style>

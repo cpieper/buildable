@@ -1,0 +1,3 @@
+<script lang="ts">let { tone = 'info', label }: { tone?: 'success' | 'caution' | 'info' | 'neutral'; label: string } = $props();</script>
+<span class:success={tone === 'success'} class:caution={tone === 'caution'} class:info={tone === 'info'} class="status-stud" role="status" aria-label={label} title={label}></span>
+<style>.status-stud { display:inline-block; width:10px; height:10px; border:1px solid var(--ink); border-radius:2px; background:var(--ink-soft); }.status-stud.success { background:var(--green); }.status-stud.caution { background:var(--yellow); }.status-stud.info { background:var(--blue); }</style>

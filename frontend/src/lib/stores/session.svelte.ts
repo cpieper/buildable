@@ -1,0 +1,4 @@
+import { apiFetch, ApiError } from '$lib/api/client';
+import type { SessionResponse } from '$lib/api/types';
+let authenticated = $state(false); let loading = $state(true);
+export const session = { get authenticated() { return authenticated; }, get loading() { return loading; }, async load() { loading = true; try { authenticated = (await apiFetch<SessionResponse>('/api/auth/session')).authenticated; } catch (error) { if (error instanceof ApiError && error.status === 401) authenticated = false; else throw error; } finally { loading = false; } }, async login(password: string) { await apiFetch<void>('/api/auth/login', { method: 'POST', body: { password } }); authenticated = true; loading = false; }, async logout() { await apiFetch<void>('/api/auth/logout', { method: 'POST' }); authenticated = false; } };
