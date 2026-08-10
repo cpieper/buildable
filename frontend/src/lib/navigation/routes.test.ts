@@ -6,7 +6,11 @@ describe('safeNext', () => {
 		expect(safeNext(next)).toBe(next);
 	});
 
-	it.each(['//evil.example', '/\\evil.example', '/%5c%5cevil.example', 'https://evil.example', 'https:%2f%2fevil.example'])('rejects unsafe destinations: %s', (next) => {
+	it.each(['/inventory?filter=%5C', '/inventory#section-%5C'])('preserves backslashes in local query and hash values: %s', (next) => {
+		expect(safeNext(next)).toBe(next);
+	});
+
+	it.each(['//evil.example', '/\\evil.example', '/%5c%5cevil.example', '/inventory%5Cevil.example', 'https://evil.example', 'https:%2f%2fevil.example'])('rejects unsafe destinations: %s', (next) => {
 		expect(safeNext(next)).toBe('/buildable');
 	});
 });
