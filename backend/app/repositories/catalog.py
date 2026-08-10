@@ -50,9 +50,6 @@ class CatalogRepository:
 
         normalized = query.strip().lower()
         effective_name = func.coalesce(CatalogSetOverride.name, CatalogSet.name)
-        effective_theme = func.coalesce(
-            CatalogSetOverride.theme_name, CatalogSet.theme_name
-        )
         statement = select(CatalogSet.set_num).outerjoin(CatalogSetOverride)
         if normalized:
             statement = statement.where(
@@ -61,7 +58,6 @@ class CatalogRepository:
                         normalized, autoescape=True
                     ),
                     func.lower(effective_name).contains(normalized, autoescape=True),
-                    func.lower(effective_theme).contains(normalized, autoescape=True),
                 )
             )
         statement = statement.order_by(

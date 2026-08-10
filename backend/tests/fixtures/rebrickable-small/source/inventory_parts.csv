@@ -1,0 +1,5 @@
+inventory_id,part_num,color_id,quantity,is_spare,img_url
+100,3001,5,99,f,
+101,3001,5,2,f,https://cdn.example.test/parts/3001.png
+101,6141,1,1,t,https://cdn.example.test/parts/6141.png
+200,3626,14,1,f,https://cdn.example.test/parts/3626.png

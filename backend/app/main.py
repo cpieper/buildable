@@ -5,6 +5,7 @@ from fastapi import FastAPI
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.api.auth import router as auth_router
+from app.api.catalog import router as catalog_router
 from app.config import Settings, get_settings
 from app.db import get_session, upgrade_database
 
@@ -33,6 +34,7 @@ def create_app(
 
         app.dependency_overrides[get_session] = get_injected_session
     app.include_router(auth_router)
+    app.include_router(catalog_router)
 
     @app.get("/api/health", tags=["system"])
     def health() -> dict[str, str]:
