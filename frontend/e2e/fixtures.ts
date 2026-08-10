@@ -3,6 +3,7 @@ import { expect, type Page } from '@playwright/test';
 type ManualSet = {
 	set_num: string;
 	name: string;
+	image_url?: string;
 	parts: Array<{ part_num: string; part_name: string; color_id: number; color_name: string; rgb_hex: string; quantity: number }>;
 };
 
@@ -25,11 +26,13 @@ export async function seedCatalog(page: Page): Promise<void> {
 	await seedSet(page, {
 		set_num: '10497-1',
 		name: 'Galaxy Explorer',
+		image_url: 'https://images.brickset.com/sets/images/10497-1.jpg',
 		parts: [{ part_num: '3001', part_name: 'Brick 2 x 4', color_id: 1, color_name: 'Red', rgb_hex: 'c91a09', quantity: 2 }]
 	});
 	await seedSet(page, {
 		set_num: '90000-1',
 		name: 'Color Swap Cruiser',
+		image_url: 'https://images.brickset.com/sets/images/10497-1.jpg',
 		parts: [{ part_num: '3001', part_name: 'Brick 2 x 4', color_id: 2, color_name: 'Blue', rgb_hex: '0055bf', quantity: 2 }]
 	});
 }

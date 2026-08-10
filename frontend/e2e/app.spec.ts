@@ -2,6 +2,17 @@ import { expect, test } from '@playwright/test';
 
 import { addOwnedGalaxyExplorer, seedCatalog, unlock } from './fixtures';
 
+async function capture(page: import('@playwright/test').Page, path: string, route: RegExp, heading: string): Promise<void> {
+	await expect(page).toHaveURL(route);
+	await expect(page.getByRole('heading', { name: heading })).toBeVisible();
+	if (/(collection|buildable|match-detail)/.test(path)) {
+		const image = page.locator('img').first();
+		await expect(image).toBeVisible();
+		expect(await image.evaluate((element: HTMLImageElement) => element.complete && element.naturalWidth > 0)).toBe(true);
+	}
+	await page.screenshot({ path, fullPage: true });
+}
+
 test('owned sets become an explainable buildable recommendation', async ({ page }) => {
 	await unlock(page);
 	await seedCatalog(page);
@@ -33,17 +44,19 @@ test('recording a known missing piece decreases the available inventory', async 
 
 test('captures desktop workflow screenshots', async ({ page }) => {
 	await page.goto('/unlock');
+	await expect(page.getByLabel('Shared password')).toBeVisible();
 	await page.screenshot({ path: 'test-results/screenshots/desktop-unlock.png', fullPage: true });
 	await unlock(page);
 	await seedCatalog(page);
+	await addOwnedGalaxyExplorer(page);
 	await page.getByRole('link', { name: 'Collection' }).click();
-	await page.screenshot({ path: 'test-results/screenshots/desktop-collection.png', fullPage: true });
+	await capture(page, 'test-results/screenshots/desktop-collection.png', /\/collection$/, 'Owned sets');
 	await page.getByRole('link', { name: 'Inventory' }).click();
-	await page.screenshot({ path: 'test-results/screenshots/desktop-inventory.png', fullPage: true });
+	await capture(page, 'test-results/screenshots/desktop-inventory.png', /\/inventory$/, 'Available pieces');
 	await page.getByRole('link', { name: 'Buildable Sets' }).click();
-	await page.screenshot({ path: 'test-results/screenshots/desktop-buildable.png', fullPage: true });
+	await capture(page, 'test-results/screenshots/desktop-buildable.png', /\/buildable/, 'What can you build?');
 	await page.getByLabel('Inspect Color Swap Cruiser').click();
-	await page.screenshot({ path: 'test-results/screenshots/desktop-match-detail.png', fullPage: true });
+	await capture(page, 'test-results/screenshots/desktop-match-detail.png', /\/sets\/90000-1$/, 'Color Swap Cruiser');
 	await page.getByRole('link', { name: 'Settings' }).click();
-	await page.screenshot({ path: 'test-results/screenshots/desktop-settings.png', fullPage: true });
+	await capture(page, 'test-results/screenshots/desktop-settings.png', /\/settings$/, 'Settings');
 });

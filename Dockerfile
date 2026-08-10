@@ -11,8 +11,8 @@ FROM python:3.12-slim-bookworm AS runtime
 COPY --from=ghcr.io/astral-sh/uv:0.10.3 /uv /uvx /bin/
 WORKDIR /app
 COPY backend/pyproject.toml backend/uv.lock ./
-RUN uv sync --frozen --no-dev --no-install-project
 COPY backend/app ./app
+RUN uv sync --frozen --no-dev
 COPY backend/migrations ./migrations
 COPY backend/alembic.ini ./alembic.ini
 COPY --from=frontend /src/frontend/build ./static
