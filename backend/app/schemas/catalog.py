@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from pydantic import BaseModel, Field, HttpUrl
+from pydantic import BaseModel, ConfigDict, Field, HttpUrl
 
 
 class ManualCatalogPart(BaseModel):
@@ -45,6 +45,8 @@ class CatalogSetSummary(BaseModel):
 
 
 class CatalogPartResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     part_num: str
     part_name: str
     color_id: int
@@ -57,6 +59,25 @@ class CatalogPartResponse(BaseModel):
 
 
 class CatalogSetDetail(CatalogSetSummary):
+    model_config = ConfigDict(from_attributes=True)
+
     external_url: str | None
     instructions_url: str | None
     parts: list[CatalogPartResponse]
+
+
+class RemoteSetSummary(BaseModel):
+    set_num: str
+    name: str
+    year: int | None
+    theme_id: int | None
+    num_parts: int
+    image_url: str | None
+    external_url: str | None
+
+
+class CatalogLookupResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    set: CatalogSetDetail
+    summary: ImportSummary

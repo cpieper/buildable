@@ -8,6 +8,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.models import AppSetting, CatalogSet, SyncRun
+from app.schemas.catalog import RemoteSetSummary
+from app.services.rebrickable import CatalogLookupError, ImportedPart, ImportedSet
 
 
 @pytest.fixture
@@ -40,6 +42,8 @@ def catalog_fixture_dir() -> Path:
     [
         ("get", "/api/catalog/sets", {}),
         ("get", "/api/catalog/sets/1234-1", {}),
+        ("get", "/api/catalog/remote-search", {}),
+        ("post", "/api/catalog/lookup/1234-1", {}),
         (
             "post",
             "/api/catalog/manual-sets",
@@ -235,6 +239,184 @@ def test_set_detail_returns_effective_parts_and_missing_set_is_404(
         ],
     }
     assert authenticated_client.get("/api/catalog/sets/missing-1").status_code == 404
+
+
+def test_remote_search_returns_remote_summaries_without_mutating_cache(
+    authenticated_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    session_factory: sessionmaker[Session],
+) -> None:
+    """Routing remote search through the importer would create unwanted cache rows."""
+    class FakeRebrickableClient:
+        def __init__(self, api_key: str | None) -> None:
+            assert api_key == "secret"
+
+        def search_sets(self, query: str, limit: int) -> list[RemoteSetSummary]:
+            assert (query, limit) == ("Galaxy Explorer", 20)
+            return [
+                RemoteSetSummary(
+                    set_num="10497-1",
+                    name="Galaxy Explorer",
+                    year=2022,
+                    theme_id=158,
+                    num_parts=1254,
+                    image_url="https://example.test/galaxy.png",
+                    external_url="https://example.test/sets/10497-1",
+                )
+            ]
+
+    authenticated_client.app.state.settings.rebrickable_api_key = "secret"
+    monkeypatch.setattr("app.api.catalog.RebrickableClient", FakeRebrickableClient)
+
+    response = authenticated_client.get(
+        "/api/catalog/remote-search", params={"q": "Galaxy Explorer", "limit": 20}
+    )
+
+    assert response.status_code == 200
+    assert response.json()[0]["set_num"] == "10497-1"
+    with session_factory() as session:
+        assert session.get(CatalogSet, "10497-1") is None
+
+
+def test_lookup_imports_selected_set_and_returns_sync_summary(
+    authenticated_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Omitting the targeted importer would return a set that the cache cannot use."""
+    class FakeRebrickableClient:
+        def __init__(self, api_key: str | None) -> None:
+            assert api_key == "secret"
+
+        def lookup_set(self, set_num: str) -> ImportedSet:
+            assert set_num == "10497-1"
+            return ImportedSet(
+                set_num="10497-1",
+                name="Galaxy Explorer",
+                year=2022,
+                theme_id=158,
+                num_parts=2,
+                image_url="https://example.test/galaxy.png",
+                external_url="https://example.test/sets/10497-1",
+                parts=[
+                    ImportedPart(
+                        part_num="3001",
+                        part_name="Brick 2 x 4",
+                        part_image_url=None,
+                        color_id=4,
+                        color_name="Red",
+                        rgb_hex="C91A09",
+                        quantity=2,
+                        is_spare=False,
+                        source_id="1",
+                    )
+                ],
+            )
+
+    authenticated_client.app.state.settings.rebrickable_api_key = "secret"
+    monkeypatch.setattr("app.api.catalog.RebrickableClient", FakeRebrickableClient)
+
+    response = authenticated_client.post("/api/catalog/lookup/10497-1")
+
+    assert response.status_code == 200
+    assert response.json()["set"]["parts"][0]["quantity"] == 2
+    assert response.json()["summary"]["sync_run_id"] > 0
+
+
+def test_lookup_missing_api_key_uses_normalized_error(
+    authenticated_client: TestClient,
+) -> None:
+    """Returning a generic server error hides the configuration action the user needs."""
+    response = authenticated_client.post("/api/catalog/lookup/10497-1")
+
+    assert response.status_code == 409
+    assert response.json()["detail"]["code"] == "api_key_missing"
+
+
+def test_lookup_failure_preserves_existing_cached_set(
+    authenticated_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    session_factory: sessionmaker[Session],
+) -> None:
+    """Deleting cached inventory before a failed remote response would lose usable data."""
+    with session_factory.begin() as session:
+        session.add(
+            CatalogSet(
+                set_num="10497-1",
+                name="Cached Galaxy Explorer",
+                year=2022,
+                theme_id=None,
+                theme_name=None,
+                num_parts=2,
+                image_url=None,
+                external_url=None,
+                instructions_url=None,
+                source="rebrickable_api",
+            )
+        )
+
+    class FailingRebrickableClient:
+        def __init__(self, api_key: str | None) -> None:
+            assert api_key == "secret"
+
+        def lookup_set(self, set_num: str) -> ImportedSet:
+            raise CatalogLookupError("unavailable", "Rebrickable is unavailable")
+
+    authenticated_client.app.state.settings.rebrickable_api_key = "secret"
+    monkeypatch.setattr("app.api.catalog.RebrickableClient", FailingRebrickableClient)
+
+    response = authenticated_client.post("/api/catalog/lookup/10497-1")
+
+    assert response.status_code == 503
+    assert response.json()["detail"]["code"] == "rebrickable_unavailable"
+    with session_factory() as session:
+        assert session.get_one(CatalogSet, "10497-1").name == "Cached Galaxy Explorer"
+
+
+@pytest.mark.parametrize(
+    ("error", "expected_status", "expected_code"),
+    [
+        (CatalogLookupError("not_found", "Set not found"), 404, "set_not_found"),
+        (
+            CatalogLookupError("throttled", "Throttled", retry_after=2),
+            429,
+            "rebrickable_throttled",
+        ),
+        (
+            CatalogLookupError("unavailable", "Unavailable"),
+            503,
+            "rebrickable_unavailable",
+        ),
+        (
+            CatalogLookupError("invalid_response", "Malformed"),
+            502,
+            "invalid_upstream_response",
+        ),
+    ],
+)
+def test_lookup_maps_remote_errors_to_normalized_api_response(
+    authenticated_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    error: CatalogLookupError,
+    expected_status: int,
+    expected_code: str,
+) -> None:
+    """Changing a lookup error status/code would break callers' recovery behavior."""
+    class FailingRebrickableClient:
+        def __init__(self, api_key: str | None) -> None:
+            assert api_key == "secret"
+
+        def lookup_set(self, set_num: str) -> ImportedSet:
+            raise error
+
+    authenticated_client.app.state.settings.rebrickable_api_key = "secret"
+    monkeypatch.setattr("app.api.catalog.RebrickableClient", FailingRebrickableClient)
+
+    response = authenticated_client.post("/api/catalog/lookup/10497-1")
+
+    assert response.status_code == expected_status
+    assert response.json()["detail"]["code"] == expected_code
+    if error.retry_after is not None:
+        assert response.headers["retry-after"] == "2"
 
 
 @pytest.mark.parametrize("set_num", ["MOC-42", "arbitrary", "1234-0", "123A-1"])
