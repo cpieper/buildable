@@ -125,26 +125,27 @@ def sort_recommendations(
             ),
         )
 
-    reverse = direction == "desc"
+    def ordered_by(metric: object) -> list[Recommendation]:
+        return sorted(
+            sorted(values, key=lambda item: item.target.set_num),
+            key=metric,
+            reverse=direction == "desc",
+        )
+
     if sort == "buildability":
         ranks = {"exact": 0, "substitution": 1, "missing": 2}
-        return sorted(values, key=lambda item: (ranks[item.result.status], item.target.set_num), reverse=reverse)
+        return ordered_by(lambda item: ranks[item.result.status])
     if sort == "pieces":
-        return sorted(values, key=lambda item: (item.target.num_parts, item.target.set_num), reverse=reverse)
+        return ordered_by(lambda item: item.target.num_parts)
     if sort == "year":
-        return sorted(
-            values,
-            key=lambda item: (item.target.year is None, item.target.year or 0, item.target.set_num),
-            reverse=reverse,
+        return ordered_by(
+            lambda item: (item.target.year is None, item.target.year or 0)
         )
     if sort == "mismatches":
-        return sorted(
-            values,
-            key=lambda item: (
+        return ordered_by(
+            lambda item: (
                 item.result.color_substitution_quantity
                 + item.result.equivalence_substitution_quantity,
-                item.target.set_num,
-            ),
-            reverse=reverse,
+            )
         )
-    return sorted(values, key=lambda item: (item.result.missing_quantity, item.target.set_num), reverse=reverse)
+    return ordered_by(lambda item: item.result.missing_quantity)
