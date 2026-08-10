@@ -50,9 +50,14 @@ class EquivalenceGroupBackup(BaseModel):
 
 
 class BackupV1(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(
+        extra="forbid",
+        serialize_by_alias=True,
+        validate_by_alias=True,
+        validate_by_name=True,
+    )
 
-    schema: str = "what2build.backup/v1"
+    schema_name: str = Field(default="what2build.backup/v1", alias="schema")
     exported_at: datetime
     owned_sets: list[OwnedSetBackup] = Field(default_factory=list)
     missing_parts: list[MissingPartBackup] = Field(default_factory=list)

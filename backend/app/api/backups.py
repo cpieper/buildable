@@ -23,7 +23,7 @@ def _validation_error(error: BackupValidationError) -> HTTPException:
     return HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail={"code": error.code, "message": str(error), "missing_dependencies": error.dependencies})
 
 
-@router.get("/export", response_model=BackupV1)
+@router.get("/export", response_model=BackupV1, response_model_by_alias=True)
 def export(session: Annotated[Session, Depends(get_session)]) -> BackupV1:
     return export_backup(session)
 

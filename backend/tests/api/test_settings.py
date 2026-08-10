@@ -78,3 +78,25 @@ def test_replace_aborts_when_safety_backup_cannot_be_written(
     monkeypatch.setattr(backups_api, "write_backup_json", fail_write)  # type: ignore[attr-defined]
     payload = {"schema": "what2build.backup/v1", "exported_at": "2026-08-10T12:00:00Z", "owned_sets": [{"set_num": "1000-1", "quantity": 1, "completeness": "complete", "unknown_missing_count": 0, "unknown_missing_note": None, "notes": None}], "missing_parts": [], "set_overrides": [], "set_part_overrides": [], "equivalence_groups": [], "settings": {}}
     assert client.post("/api/backups/import?mode=replace&confirm=true", json=payload).status_code == 500
+
+
+def test_replace_rejects_reserved_setting_before_writing_safety_copy(
+    client: TestClient, session_factory: sessionmaker[Session], monkeypatch: object
+) -> None:
+    import app.api.backups as backups_api
+
+    with session_factory.begin() as session:
+        session.add_all([
+            AppSetting(key="auth.password_hash", value=PasswordHash.recommended().hash("build-stuff"), secret=True),
+            AppSetting(key="auth.revision", value="1", secret=True),
+        ])
+    client.post("/api/auth/login", json={"password": "build-stuff"})
+
+    def unexpected_write(*_args: object) -> None:
+        raise AssertionError("safety backup should not be written")
+
+    monkeypatch.setattr(backups_api, "write_backup_json", unexpected_write)  # type: ignore[attr-defined]
+    payload = {"schema": "what2build.backup/v1", "exported_at": "2026-08-10T12:00:00Z", "owned_sets": [], "missing_parts": [], "set_overrides": [], "set_part_overrides": [], "equivalence_groups": [], "settings": {"auth.password_hash": "malicious"}}
+    response = client.post("/api/backups/import?mode=replace&confirm=true", json=payload)
+    assert response.status_code == 422
+    assert response.json()["detail"]["code"] == "reserved_setting_key"

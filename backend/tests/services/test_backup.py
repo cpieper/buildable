@@ -1,5 +1,6 @@
 from pathlib import Path
 
+import pytest
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -79,7 +80,7 @@ def test_backup_excludes_secrets(session: Session) -> None:
 
 def test_restore_rejects_unsupported_schema_and_dangling_dependencies_before_writes(session: Session) -> None:
     seed_catalog(session)
-    unsupported = BackupV1.model_construct(schema="what2build.backup/v2")
+    unsupported = BackupV1.model_construct(schema_name="what2build.backup/v2")
     try:
         restore_backup(session, unsupported, mode="replace")
     except BackupValidationError as error:
@@ -96,6 +97,71 @@ def test_restore_rejects_unsupported_schema_and_dangling_dependencies_before_wri
     else:
         raise AssertionError("dangling data was accepted")
     assert session.scalars(select(OwnedSet)).all() == []
+
+
+@pytest.mark.parametrize(
+    ("key", "mode", "existing_secret"),
+    [
+        (key, mode, existing_secret)
+        for key in (
+            "auth.password_hash",
+            "auth.revision",
+            "session_secret",
+            "rebrickable_api_key",
+        )
+        for mode in ("replace", "merge")
+        for existing_secret in (False, True)
+    ],
+)
+def test_restore_rejects_reserved_secret_setting_keys_before_mutation(
+    session: Session, key: str, mode: str, existing_secret: bool
+) -> None:
+    seed_catalog(session)
+    session.add(OwnedSet(set_num="1000-1", notes="keep"))
+    if existing_secret:
+        session.add(AppSetting(key=key, value="existing", secret=True))
+    session.commit()
+    backup = BackupV1.model_validate({"schema": "what2build.backup/v1", "exported_at": "2026-08-10T12:00:00Z", "owned_sets": [], "missing_parts": [], "set_overrides": [], "set_part_overrides": [], "equivalence_groups": [], "settings": {key: "malicious"}})
+
+    with pytest.raises(BackupValidationError, match="reserved") as captured:
+        restore_backup(session, backup, mode=mode)
+
+    assert captured.value.code == "reserved_setting_key"
+    assert session.scalars(select(OwnedSet)).one().notes == "keep"
+    stored = session.get(AppSetting, key)
+    if existing_secret:
+        assert stored is not None
+        assert stored.value == "existing"
+        assert stored.secret is True
+    else:
+        assert stored is None
+
+
+def test_backup_schema_alias_serializes_exact_v1_wire_field(session: Session) -> None:
+    payload = export_backup(session).model_dump(mode="json")
+
+    assert payload["schema"] == "what2build.backup/v1"
+    assert "schema_name" not in payload
+
+
+@pytest.mark.parametrize("mode", ["replace", "merge"])
+def test_restore_rejects_destination_secret_setting_key_before_mutation(
+    session: Session, mode: str
+) -> None:
+    seed_catalog(session)
+    session.add_all([
+        OwnedSet(set_num="1000-1", notes="keep"),
+        AppSetting(key="custom.secret", value="existing", secret=True),
+    ])
+    session.commit()
+    backup = BackupV1.model_validate({"schema": "what2build.backup/v1", "exported_at": "2026-08-10T12:00:00Z", "owned_sets": [], "missing_parts": [], "set_overrides": [], "set_part_overrides": [], "equivalence_groups": [], "settings": {"custom.secret": "malicious"}})
+
+    with pytest.raises(BackupValidationError, match="secret") as captured:
+        restore_backup(session, backup, mode=mode)
+
+    assert captured.value.code == "secret_setting_key"
+    assert session.scalars(select(OwnedSet)).one().notes == "keep"
+    assert session.get(AppSetting, "custom.secret").value == "existing"  # type: ignore[union-attr]
 
 
 def test_merge_reports_conflicts_and_rejects_duplicate_natural_keys(session: Session) -> None:

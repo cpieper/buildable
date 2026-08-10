@@ -29,6 +29,14 @@ from app.schemas.backup import (
 )
 
 BACKUP_SCHEMA = "what2build.backup/v1"
+RESERVED_SETTING_KEYS = frozenset(
+    {
+        "auth.password_hash",
+        "auth.revision",
+        "session_secret",
+        "rebrickable_api_key",
+    }
+)
 
 
 class BackupValidationError(ValueError):
@@ -45,7 +53,7 @@ def write_backup_json(path: Path, backup: BackupV1) -> None:
     temporary_path = Path(temporary_name)
     try:
         with os.fdopen(temporary_fd, "w", encoding="utf-8") as stream:
-            stream.write(backup.model_dump_json(indent=2))
+            stream.write(backup.model_dump_json(by_alias=True, indent=2))
             stream.write("\n")
             stream.flush()
             os.fsync(stream.fileno())
@@ -70,9 +78,10 @@ def export_backup(session: Session) -> BackupV1:
 
 
 def validate_backup(session: Session, backup: BackupV1) -> dict[str, list[str | int]]:
-    if backup.schema != BACKUP_SCHEMA:
-        raise BackupValidationError("unsupported_schema", f"Unsupported backup schema: {backup.schema}")
+    if backup.schema_name != BACKUP_SCHEMA:
+        raise BackupValidationError("unsupported_schema", f"Unsupported backup schema: {backup.schema_name}")
     _reject_duplicates(backup)
+    _reject_secret_settings(session, backup)
     set_nums = {row.set_num for row in backup.owned_sets} | {row.set_num for row in backup.missing_parts} | {row.set_num for row in backup.set_overrides} | {row.set_num for row in backup.set_part_overrides}
     part_nums = {row.part_num for row in backup.missing_parts} | {row.part_num for row in backup.set_part_overrides} | {part for group in backup.equivalence_groups for part in group.part_nums}
     color_ids = {row.color_id for row in backup.missing_parts} | {row.color_id for row in backup.set_part_overrides}
@@ -84,6 +93,27 @@ def validate_backup(session: Session, backup: BackupV1) -> dict[str, list[str | 
     if missing:
         raise BackupValidationError("missing_dependencies", "Catalog dependencies are missing", missing)
     return missing
+
+
+def _reject_secret_settings(session: Session, backup: BackupV1) -> None:
+    reserved = sorted(RESERVED_SETTING_KEYS.intersection(backup.settings))
+    if reserved:
+        raise BackupValidationError(
+            "reserved_setting_key",
+            f"Backup contains reserved setting key: {reserved[0]}",
+        )
+    if not backup.settings:
+        return
+    destination_secret = session.scalars(
+        select(AppSetting.key).where(
+            AppSetting.key.in_(backup.settings), AppSetting.secret.is_(True)
+        )
+    ).first()
+    if destination_secret is not None:
+        raise BackupValidationError(
+            "secret_setting_key",
+            f"Backup setting key is secret in this database: {destination_secret}",
+        )
 
 
 def _reject_duplicates(backup: BackupV1) -> None:
