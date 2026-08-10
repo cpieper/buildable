@@ -14,7 +14,7 @@ class ManualCatalogPart(BaseModel):
 
 
 class ManualCatalogSetCreate(BaseModel):
-    set_num: str
+    set_num: str = Field(pattern=r"^[0-9]+-[1-9][0-9]*$")
     name: str
     year: int | None = None
     theme_name: str | None = None

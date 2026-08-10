@@ -45,7 +45,7 @@ def catalog_fixture_dir() -> Path:
             "/api/catalog/manual-sets",
             {
                 "json": {
-                    "set_num": "custom-1",
+                    "set_num": "9000-1",
                     "name": "Custom",
                     "parts": [],
                 }
@@ -143,7 +143,7 @@ def test_manual_entry_is_searchable_by_name_and_set_number(
     authenticated_client: TestClient,
 ) -> None:
     payload = {
-        "set_num": "MOC-42",
+        "set_num": "9000-1",
         "name": "Moon Rover",
         "year": 2026,
         "theme_name": "Space",
@@ -166,18 +166,18 @@ def test_manual_entry_is_searchable_by_name_and_set_number(
     created = authenticated_client.post("/api/catalog/manual-sets", json=payload)
 
     assert created.status_code == 201
-    assert created.json()["set_num"] == "MOC-42"
+    assert created.json()["set_num"] == "9000-1"
     assert created.json()["parts"][0]["quantity"] == 4
     assert [
         item["set_num"]
         for item in authenticated_client.get(
             "/api/catalog/sets", params={"q": "moon", "limit": 20}
         ).json()
-    ] == ["MOC-42"]
+    ] == ["9000-1"]
     assert [
         item["name"]
         for item in authenticated_client.get(
-            "/api/catalog/sets", params={"q": "mOc-42", "limit": 20}
+            "/api/catalog/sets", params={"q": "9000-1", "limit": 20}
         ).json()
     ] == ["Moon Rover"]
     assert authenticated_client.get(
@@ -189,7 +189,7 @@ def test_set_detail_returns_effective_parts_and_missing_set_is_404(
     authenticated_client: TestClient,
 ) -> None:
     payload = {
-        "set_num": "MOC-42",
+        "set_num": "9000-1",
         "name": "Moon Rover",
         "parts": [
             {
@@ -207,11 +207,11 @@ def test_set_detail_returns_effective_parts_and_missing_set_is_404(
         == 201
     )
 
-    response = authenticated_client.get("/api/catalog/sets/MOC-42")
+    response = authenticated_client.get("/api/catalog/sets/9000-1")
 
     assert response.status_code == 200
     assert response.json() == {
-        "set_num": "MOC-42",
+        "set_num": "9000-1",
         "name": "Moon Rover",
         "year": None,
         "theme_name": None,
@@ -235,3 +235,55 @@ def test_set_detail_returns_effective_parts_and_missing_set_is_404(
         ],
     }
     assert authenticated_client.get("/api/catalog/sets/missing-1").status_code == 404
+
+
+@pytest.mark.parametrize("set_num", ["MOC-42", "arbitrary", "1234-0", "123A-1"])
+def test_manual_entry_rejects_non_official_set_numbers(
+    set_num: str, authenticated_client: TestClient
+) -> None:
+    response = authenticated_client.post(
+        "/api/catalog/manual-sets",
+        json={
+            "set_num": set_num,
+            "name": "Not official",
+            "parts": [
+                {
+                    "part_num": "3001",
+                    "part_name": "Brick 2 x 4",
+                    "color_id": 5,
+                    "color_name": "Red",
+                    "rgb_hex": "C91A09",
+                    "quantity": 1,
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 422
+    assert response.json()["detail"][0]["loc"][-1] == "set_num"
+
+
+@pytest.mark.parametrize("set_num", ["0-1", "0007-2"])
+def test_manual_entry_accepts_legacy_zero_prefixed_design_ids(
+    set_num: str, authenticated_client: TestClient
+) -> None:
+    response = authenticated_client.post(
+        "/api/catalog/manual-sets",
+        json={
+            "set_num": set_num,
+            "name": "Legacy official set",
+            "parts": [
+                {
+                    "part_num": "3001",
+                    "part_name": "Brick 2 x 4",
+                    "color_id": 5,
+                    "color_name": "Red",
+                    "rgb_hex": "C91A09",
+                    "quantity": 1,
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 201
+    assert response.json()["set_num"] == set_num

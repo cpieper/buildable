@@ -9,7 +9,7 @@ from typing import BinaryIO
 from zipfile import BadZipFile, ZipFile
 
 from sqlalchemy import delete, select
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, SessionTransactionOrigin
 
 from app.models import (
@@ -107,13 +107,11 @@ def import_rebrickable_zip(stream: BinaryIO, session: Session) -> ImportSummary:
         session.commit()
         return ImportSummary(sync_run_id=run.id, **summary_values)
     except CatalogImportError as error:
-        session.rollback()
-        _record_failed_run(session, started_at, error)
+        _rollback_and_record_failure(session, started_at, error)
         raise
-    except (BadZipFile, csv.Error, UnicodeError, IntegrityError, OSError) as error:
-        session.rollback()
+    except (BadZipFile, csv.Error, UnicodeError, SQLAlchemyError, OSError) as error:
         normalized = CatalogImportError(f"catalog import failed: {error}")
-        _record_failed_run(session, started_at, normalized)
+        _rollback_and_record_failure(session, started_at, normalized)
         raise normalized from error
 
 
@@ -190,9 +188,9 @@ def import_manual_set(
                 )
             )
         session.commit()
-    except IntegrityError as error:
+    except SQLAlchemyError as error:
         session.rollback()
-        raise CatalogImportError(f"manual catalog import failed: {error.orig}") from error
+        raise CatalogImportError(f"manual catalog import failed: {error}") from error
 
     result = CatalogRepository(session).get_effective_set(payload.set_num)
     if result is None:
@@ -238,6 +236,19 @@ def _record_failed_run(
     session.commit()
 
 
+def _rollback_and_record_failure(
+    session: Session, started_at: datetime, error: CatalogImportError
+) -> None:
+    session.rollback()
+    try:
+        _record_failed_run(session, started_at, error)
+    except SQLAlchemyError as record_error:
+        session.rollback()
+        raise CatalogImportError(
+            f"{error}; additionally failed to record failed sync run: {record_error}"
+        ) from record_error
+
+
 def _url_string(value: object | None) -> str | None:
     return None if value is None else str(value)
 
@@ -271,6 +282,18 @@ def _read_rows(
             reader = csv.DictReader(text_stream)
             if reader.fieldnames is None:
                 raise CatalogImportError(f"{filename}:1: missing CSV header")
+            duplicate_headers = sorted(
+                {
+                    header
+                    for header in reader.fieldnames
+                    if reader.fieldnames.count(header) > 1
+                }
+            )
+            if duplicate_headers:
+                names = ", ".join(duplicate_headers)
+                raise CatalogImportError(
+                    f"{filename}:1: duplicate CSV header: {names}"
+                )
             missing = required_columns.difference(reader.fieldnames)
             if missing:
                 names = ", ".join(sorted(missing))
