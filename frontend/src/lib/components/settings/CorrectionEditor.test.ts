@@ -81,4 +81,26 @@ describe('CorrectionEditor', () => {
 		expect(screen.getByText('Effective: 1999')).toBeInTheDocument();
 		expect(screen.getByText('Imported: 2')).toBeInTheDocument();
 	});
+
+	it('removes both identities from a target-only reclassified catalog row', async () => {
+		const targetSet = { ...set, parts: [{ ...set.parts[0], is_spare: true, quantity: 2, source_kind: 'override' }] };
+		const targetOverride = { imported: null, override: { ...part.override, is_spare: true, quantity: 2 }, effective: targetSet.parts[0], has_local_overrides: true };
+		const originalDelete = { imported: set.parts[0], override: { ...part.override, operation: 'delete', quantity: null, is_spare: false }, effective: null, has_local_overrides: true };
+		const deleteCalls: Array<{ is_spare: boolean; reason: string }> = []; let removed = false;
+		vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+			const url = String(input); const method = init?.method ?? 'GET';
+			if (url === '/api/catalog/sets/1234-1') return json(removed ? set : targetSet);
+			if (url === '/api/overrides/sets/1234-1' && method === 'GET') return removed ? json({ detail: 'No local overrides for set' }, 404) : json({ metadata, parts: [targetOverride, originalDelete] });
+			if (url === '/api/overrides/sets/1234-1/parts/3001/5' && method === 'DELETE') { deleteCalls.push(JSON.parse(String(init?.body))); if (deleteCalls.length === 2) removed = true; return new Response(null, { status: 204 }); }
+			return json({}, 500);
+		});
+		render(CorrectionEditor);
+		await fireEvent.input(screen.getByLabelText('Set number'), { target: { value: '1234-1' } });
+		await fireEvent.click(screen.getByRole('button', { name: 'Load set' }));
+		await fireEvent.click(await screen.findByRole('button', { name: 'Correct part' }));
+		await fireEvent.input(screen.getAllByLabelText('Correction reason').at(-1)!, { target: { value: 'Restore source row' } });
+		await fireEvent.click(screen.getByRole('button', { name: 'Remove local correction' }));
+		expect(await screen.findByText(/Imported quantity 2 · Local none · Effective quantity 2/)).toBeInTheDocument();
+		expect(deleteCalls).toEqual([{ is_spare: true, reason: 'Restore source row' }, { is_spare: false, reason: 'Restore source row' }]);
+	});
 });
