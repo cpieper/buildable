@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-read -r -s "password?New shared password: "
+printf 'New shared password: ' >&2
+read -r -s password
 printf '\n'
-read -r -s "confirmation?Confirm new shared password: "
+printf 'Confirm new shared password: ' >&2
+read -r -s confirmation
 printf '\n'
 
 if [[ "$password" != "$confirmation" ]]; then
