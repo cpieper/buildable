@@ -14,8 +14,8 @@ export default defineConfig({
 		screenshot: 'only-on-failure'
 	},
 	projects: [
-		{ name: 'chromium', use: { ...devices['Desktop Chrome'], viewport: { width: 1280, height: 800 } } },
-		{ name: 'mobile', use: { ...devices['iPhone 13'], browserName: 'chromium', viewport: { width: 390, height: 844 } } }
+		{ name: 'chromium', testMatch: /app\.spec\.ts/, use: { ...devices['Desktop Chrome'], viewport: { width: 1280, height: 800 } } },
+		{ name: 'mobile', testMatch: /mobile\.spec\.ts/, use: { ...devices['iPhone 13'], browserName: 'chromium', viewport: { width: 390, height: 844 } } }
 	],
 	webServer: {
 		command: `rm -f ${databasePath} ${databasePath}-shm ${databasePath}-wal && npm run build && cd ../backend && WHAT2BUILD_DATABASE_URL=sqlite:////tmp/what2build-playwright.db WHAT2BUILD_DATA_DIR=/tmp/what2build-playwright-data WHAT2BUILD_FRONTEND_DIR=../frontend/build WHAT2BUILD_INITIAL_PASSWORD=build-stuff WHAT2BUILD_SESSION_SECRET=playwright-session-secret uv run fastapi run app/main.py --host 127.0.0.1 --port 8000`,

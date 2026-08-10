@@ -14,6 +14,8 @@ export async function unlock(page: Page): Promise<void> {
 }
 
 export async function seedSet(page: Page, set: ManualSet): Promise<void> {
+	const login = await page.request.post('/api/auth/login', { data: { password: 'build-stuff' } });
+	expect(login.ok(), await login.text()).toBeTruthy();
 	const response = await page.request.post('/api/catalog/manual-sets', { data: set });
 	if (response.status() === 422) return;
 	expect(response.ok(), await response.text()).toBeTruthy();
