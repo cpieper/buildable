@@ -44,6 +44,8 @@ test('recording a known missing piece decreases the available inventory', async 
 
 test('captures desktop workflow screenshots', async ({ page }) => {
 	await page.goto('/unlock');
+	await expect(page).toHaveURL(/\/unlock$/);
+	await expect(page.getByRole('heading', { name: 'Unlock your workshop.' })).toBeVisible();
 	await expect(page.getByLabel('Shared password')).toBeVisible();
 	await page.screenshot({ path: 'test-results/screenshots/desktop-unlock.png', fullPage: true });
 	await unlock(page);
