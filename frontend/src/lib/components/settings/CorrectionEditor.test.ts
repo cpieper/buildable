@@ -20,7 +20,7 @@ describe('CorrectionEditor', () => {
 		render(CorrectionEditor);
 		await fireEvent.input(screen.getByLabelText('Set number'), { target: { value: '1234-1' } });
 		await fireEvent.click(screen.getByRole('button', { name: 'Load set' }));
-		expect(await screen.findByText('Corrected')).toBeInTheDocument();
+		expect(await screen.findByText('Local: Corrected')).toBeInTheDocument();
 		expect(screen.getByText(/Imported quantity 2/)).toBeInTheDocument();
 		expect(screen.getByText(/Effective quantity 4/)).toBeInTheDocument();
 	});
@@ -47,5 +47,38 @@ describe('CorrectionEditor', () => {
 		await fireEvent.input(screen.getAllByLabelText('Correction reason').at(-1)!, { target: { value: 'Undo count' } });
 		await fireEvent.click(screen.getByRole('button', { name: 'Remove local correction' }));
 		expect(await screen.findByText(/Effective quantity 2/)).toBeInTheDocument();
+	});
+
+	it('reclassifies a part as spare without leaving the imported identity effective', async () => {
+		const calls: Array<{ body: { operation: string; is_spare: boolean; quantity: number | null } }> = [];
+		const reclassified = { ...part, imported: null, override: { ...part.override, is_spare: true, quantity: 2 }, effective: { ...set.parts[0], is_spare: true, quantity: 2 } };
+		vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+			const url = String(input); const method = init?.method ?? 'GET';
+			if (url === '/api/catalog/sets/1234-1') return json(set);
+			if (url === '/api/overrides/sets/1234-1' && method === 'GET') return calls.length === 2 ? json({ metadata, parts: [{ ...part, override: { ...part.override, operation: 'delete', quantity: null }, effective: null }, reclassified] }) : json({ detail: 'No local overrides for set' }, 404);
+			if (url === '/api/overrides/sets/1234-1/parts/3001/5' && method === 'PUT') { calls.push({ body: JSON.parse(String(init?.body)) }); return json({}); }
+			return json({}, 500);
+		});
+		render(CorrectionEditor);
+		await fireEvent.input(screen.getByLabelText('Set number'), { target: { value: '1234-1' } });
+		await fireEvent.click(screen.getByRole('button', { name: 'Load set' }));
+		await fireEvent.click(await screen.findByRole('button', { name: 'Correct part' }));
+		await fireEvent.click(screen.getByLabelText('Spare part'));
+		await fireEvent.input(screen.getAllByLabelText('Correction reason').at(-1)!, { target: { value: 'This is a spare' } });
+		await fireEvent.click(screen.getByRole('button', { name: 'Save part correction' }));
+		expect(await screen.findByText(/Local delete/)).toBeInTheDocument();
+		expect(screen.getByText(/Effective quantity 0/)).toBeInTheDocument();
+		expect(calls.map((call) => ({ operation: call.body.operation, is_spare: call.body.is_spare, quantity: call.body.quantity }))).toEqual([{ operation: 'delete', is_spare: false, quantity: null }, { operation: 'upsert', is_spare: true, quantity: 2 }]);
+	});
+
+	it('shows imported, local, and effective metadata values independently', async () => {
+		vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => String(input) === '/api/catalog/sets/1234-1' ? json(set) : json({ metadata, parts: [] }));
+		render(CorrectionEditor);
+		await fireEvent.input(screen.getByLabelText('Set number'), { target: { value: '1234-1' } });
+		await fireEvent.click(screen.getByRole('button', { name: 'Load set' }));
+		expect(await screen.findByText('Local: Corrected')).toBeInTheDocument();
+		expect(screen.getAllByText('Local: inherited').length).toBe(3);
+		expect(screen.getByText('Effective: 1999')).toBeInTheDocument();
+		expect(screen.getByText('Imported: 2')).toBeInTheDocument();
 	});
 });
