@@ -245,6 +245,13 @@ def test_zip_import_rejects_core_dml_without_rolling_back_caller_work(
 
     setting = session.get_one(AppSetting, "caller-owned")
     assert setting.value == "keep-me"
+    with Session(bind=session.get_bind()) as independent_session:
+        assert independent_session.get(AppSetting, "caller-owned") is None
+
+    session.rollback()
+    assert session.get(AppSetting, "caller-owned") is None
+    with Session(bind=session.get_bind()) as independent_session:
+        assert independent_session.get(AppSetting, "caller-owned") is None
     assert session.scalar(select(func.count()).select_from(CatalogSet)) == 0
 
 
@@ -373,7 +380,7 @@ def test_zip_import_rejects_missing_members_and_invalid_headers(
                 "1234-1,Castle Cart,2024,10,4,\n"
                 "1234-1,Duplicate,2024,10,4,\n"
             ),
-            "sets.csv:3",
+            "sets.csv:3: duplicate identity '1234-1'",
         ),
         (
             "parts.csv",
@@ -383,12 +390,12 @@ def test_zip_import_rejects_missing_members_and_invalid_headers(
                 "6141,Plate Round 1 x 1,1,Plastic\n"
                 "3626,Minifig Head,2,Plastic\n"
             ),
-            "parts.csv:2",
+            "parts.csv:2: unknown part_cat_id 999",
         ),
         (
             "inventory_minifigs.csv",
             "inventory_id,fig_num,quantity\n101,fig-missing,1\n",
-            "inventory_minifigs.csv:2",
+            "inventory_minifigs.csv:2: unknown fig_num 'fig-missing'",
         ),
     ],
 )
@@ -399,9 +406,10 @@ def test_zip_import_rejects_representative_duplicate_and_reference_errors(
     session: Session,
     zip_builder: Callable[..., BinaryIO],
 ) -> None:
-    with pytest.raises(CatalogImportError, match=diagnostic):
+    with pytest.raises(CatalogImportError) as captured:
         import_rebrickable_zip(zip_builder({member: content}), session)
 
+    assert str(captured.value) == diagnostic
     assert session.scalar(select(func.count()).select_from(CatalogSet)) == 0
 
 
@@ -545,6 +553,18 @@ def test_zip_import_allows_clean_read_only_autobegin(
 def test_database_write_failure_rolls_back_and_records_failed_sync(
     session: Session, zip_fixture: Callable[[str], BinaryIO]
 ) -> None:
+    catalog_models = (CatalogSet, CatalogPart, CatalogColor, CatalogSetPart)
+    before_counts = {
+        model.__tablename__: session.scalar(select(func.count()).select_from(model))
+        for model in catalog_models
+    }
+    assert before_counts == {
+        "catalog_sets": 0,
+        "catalog_parts": 0,
+        "catalog_colors": 0,
+        "catalog_set_parts": 0,
+    }
+    session.rollback()
     session.execute(
         text(
             "CREATE TRIGGER fail_catalog_write BEFORE INSERT ON catalog_sets "
@@ -556,11 +576,15 @@ def test_database_write_failure_rolls_back_and_records_failed_sync(
     with pytest.raises(CatalogImportError, match="missing_catalog_function"):
         import_rebrickable_zip(zip_fixture("valid-catalog.zip"), session)
 
-    assert session.scalar(select(func.count()).select_from(CatalogSet)) == 0
-    failed_run = session.scalar(select(SyncRun))
-    assert failed_run is not None
-    assert failed_run.status == "failed"
-    assert "missing_catalog_function" in (failed_run.error or "")
+    after_counts = {
+        model.__tablename__: session.scalar(select(func.count()).select_from(model))
+        for model in catalog_models
+    }
+    assert after_counts == before_counts
+    runs = session.scalars(select(SyncRun)).all()
+    assert len(runs) == 1
+    assert runs[0].status == "failed"
+    assert "missing_catalog_function" in (runs[0].error or "")
 
 
 def test_failed_sync_write_reports_both_catalog_and_recording_errors(
