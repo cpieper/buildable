@@ -71,6 +71,20 @@ describe('CorrectionEditor', () => {
 		expect(calls.map((call) => ({ operation: call.body.operation, is_spare: call.body.is_spare, quantity: call.body.quantity }))).toEqual([{ operation: 'delete', is_spare: false, quantity: null }, { operation: 'upsert', is_spare: true, quantity: 2 }]);
 	});
 
+	it('labels a target-only local upsert without inventing an imported quantity', async () => {
+		const target = { ...set.parts[0], is_spare: true, quantity: 2, source_kind: 'override' };
+		const targetOverride = { imported: null, override: { ...part.override, is_spare: true, quantity: 2 }, effective: target, has_local_overrides: true };
+		vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+			if (String(input) === '/api/catalog/sets/1234-1') return json({ ...set, parts: [] });
+			return json({ metadata, parts: [targetOverride] });
+		});
+		render(CorrectionEditor);
+		await fireEvent.input(screen.getByLabelText('Set number'), { target: { value: '1234-1' } });
+		await fireEvent.click(screen.getByRole('button', { name: 'Load set' }));
+		expect(await screen.findByText('Imported none · Local 2 · Effective quantity 2')).toBeInTheDocument();
+		expect(screen.queryByText(/Imported quantity 2/)).not.toBeInTheDocument();
+	});
+
 	it('shows imported, local, and effective metadata values independently', async () => {
 		vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => String(input) === '/api/catalog/sets/1234-1' ? json(set) : json({ metadata, parts: [] }));
 		render(CorrectionEditor);
