@@ -1,10 +1,10 @@
 <script lang="ts">
 	import type { OwnedSet } from '$lib/api/types';
-	let { owned, onEditMissing, onUpdate, onRemove }: { owned: OwnedSet; onEditMissing: () => void; onUpdate: (changes: Partial<OwnedSet>) => void; onRemove: () => void } = $props();
+	let { owned, imageUrl, onEditMissing, onUpdate, onRemove }: { owned: OwnedSet; imageUrl?: string | null; onEditMissing: () => void; onUpdate: (changes: Partial<OwnedSet>) => void; onRemove: () => void } = $props();
 	function setComplete(complete: boolean) { if (complete && (owned.unknown_missing_count || owned.unknown_missing_note) && confirm('Clear the unknown missing-piece warning? Known missing pieces will be kept.')) onUpdate({ completeness: 'complete', unknown_missing_count: 0, unknown_missing_note: null }); else onUpdate({ completeness: complete ? 'complete' : 'incomplete' }); }
 </script>
 <article class="owned-set">
-	<div class="set-mark" aria-hidden="true">{owned.set_num.split('-')[0]}</div>
+	{#if imageUrl}<img class="set-thumb" src={imageUrl} alt={`${owned.set_name} set thumbnail`}/>{:else}<div class="set-mark" aria-hidden="true">{owned.set_num.split('-')[0]}</div>{/if}
 	<div class="identity"><strong>{owned.set_name}</strong><span>{owned.set_num}</span>{#if owned.known_missing_total}<span class="missing">{owned.known_missing_total} known missing</span>{/if}</div>
 	<div class="controls"><label>Quantity <input aria-label={`Quantity for ${owned.set_name}`} type="number" min="1" value={owned.quantity} oninput={(e) => onUpdate({ quantity: Number(e.currentTarget.value) })} /></label><label><input type="checkbox" checked={owned.completeness === 'complete'} onchange={(e) => setComplete(e.currentTarget.checked)} /> Complete</label><label>Notes <input aria-label={`Notes for ${owned.set_name}`} value={owned.notes ?? ''} onchange={(e)=>onUpdate({notes:e.currentTarget.value||null})}/></label><details><summary aria-label={`Set actions for ${owned.set_name}`}>•••</summary><button onclick={onEditMissing}>Edit missing pieces</button><button class="quiet" onclick={onRemove}>Remove</button></details></div>
 	{#if owned.completeness === 'incomplete'}<div class="warning">⚠ Unknown missing pieces may affect confidence. <label>Unknown count <input type="number" min="0" value={owned.unknown_missing_count} oninput={(e)=>onUpdate({unknown_missing_count:Number(e.currentTarget.value)})}/></label><label>Note <input value={owned.unknown_missing_note ?? ''} oninput={(e)=>onUpdate({unknown_missing_note:e.currentTarget.value || null})}/></label></div>{/if}

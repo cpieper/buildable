@@ -7,6 +7,7 @@ const owned = { id: 1, set_num: '10497-1', set_name: 'Galaxy Explorer', quantity
 
 describe('collection page', () => {
 	beforeEach(() => {
+		vi.restoreAllMocks();
 		let added = false; let missing = [] as unknown[];
 		vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
 			const url = String(input); const method = init?.method ?? 'GET';
@@ -38,7 +39,7 @@ describe('collection page', () => {
 		let remoteImported = false;
 		vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
 			const url = String(input); const method = init?.method ?? 'GET';
-			if (url === '/api/collection') return json([]);
+			if (url === '/api/collection' && method === 'GET') return json([]);
 			if (url === '/api/settings/status') return json({ api_key_configured: true });
 			if (url.startsWith('/api/catalog/sets?')) return json([]);
 			if (url.startsWith('/api/catalog/remote-search?')) return json([{ set_num: '99999-1', name: 'Remote Explorer', year: 2026, theme_id: 1, num_parts: 10, image_url: 'https://example.com/set.png', external_url: null }]);
@@ -54,6 +55,29 @@ describe('collection page', () => {
 		await fireEvent.input(screen.getByLabelText('Quantity'), { target: { value: '2' } });
 		await fireEvent.input(screen.getByLabelText('Notes'), { target: { value: 'shelf A' } });
 		await fireEvent.click(screen.getByRole('button', { name: 'Add to collection' }));
+		await new Promise((resolve) => setTimeout(resolve, 0));
 		expect(remoteImported).toBe(true);
+		const calls = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls;
+		const lookup = calls.findIndex(([url, init]) => url === '/api/catalog/lookup/99999-1' && init?.method === 'POST');
+		const add = calls.findIndex(([url, init]) => url === '/api/collection' && init?.method === 'POST');
+		expect(lookup).toBeLessThan(add);
+		expect(JSON.parse(calls[add][1].body)).toMatchObject({ set_num: '99999-1', quantity: 2, completeness: 'complete', notes: 'shelf A' });
+	});
+
+	it('retries the current uncached search when delayed settings report a configured API key', async () => {
+		let resolveStatus!: (value: Response) => void;
+		vi.spyOn(globalThis, 'fetch').mockImplementation((input, init) => {
+			const url=String(input); const method=init?.method ?? 'GET';
+			if (url === '/api/collection' && method === 'GET') return Promise.resolve(json([]));
+			if (url === '/api/settings/status') return new Promise((resolve) => { resolveStatus = resolve; });
+			if (url.startsWith('/api/catalog/sets?')) return Promise.resolve(json([]));
+			if (url.startsWith('/api/catalog/remote-search?')) return Promise.resolve(json([{ set_num:'99999-1', name:'Remote Explorer', year:2026, theme_id:1, num_parts:10, image_url:null, external_url:null }]));
+			return Promise.resolve(json({}, 200));
+		});
+		render(CollectionPage); await fireEvent.click(await screen.findByRole('button',{name:'Add set'}));
+		await fireEvent.input(screen.getByLabelText('Set number or name'),{target:{value:'Remote Explorer'}});
+		await new Promise((resolve)=>setTimeout(resolve,300));
+		resolveStatus(json({api_key_configured:true}));
+		expect(await screen.findByRole('option',{name:/Remote Explorer/})).toBeInTheDocument();
 	});
 });
