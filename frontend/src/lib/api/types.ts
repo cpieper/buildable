@@ -1,5 +1,5 @@
 export interface SessionResponse { authenticated: boolean; }
-export interface ApiProblem { detail?: string; message?: string; code?: string; }
+export interface ApiProblem { detail?: string | ApiProblem; message?: string; code?: string; missing_dependencies?: Record<string, Array<string | number>>; }
 export interface CatalogSetSummary { set_num: string; name: string; year: number | null; theme_name: string | null; num_parts: number; image_url: string | null; has_local_overrides: boolean; }
 export interface CatalogPart { part_num: string; part_name: string; color_id: number; color_name: string; rgb_hex: string; quantity: number; is_spare: boolean; source_kind: string; image_url: string | null; }
 export interface CatalogSetDetail extends CatalogSetSummary { external_url: string | null; instructions_url: string | null; parts: CatalogPart[]; }
@@ -23,3 +23,5 @@ export interface EquivalenceGroup { id: number; name: string; part_nums: string[
 export interface BackupValidation { valid: boolean; missing_dependencies: Record<string, Array<string | number>>; }
 export interface RestoreSummary { owned_sets: number; missing_parts: number; set_overrides: number; set_part_overrides: number; equivalence_groups: number; settings: number; changed: number; skipped: number; conflicting: number; safety_backup: string | null; }
 export interface SetCorrection { imported: Record<string, unknown>; override: (Record<string, unknown> & { reason?: string }) | null; effective: Record<string, unknown>; has_local_overrides: boolean; }
+export interface PartCorrection { imported: CatalogPart | null; override: { part_num: string; color_id: number; is_spare: boolean; operation: 'upsert' | 'delete'; quantity: number | null; reason: string }; effective: CatalogPart | null; has_local_overrides: boolean; }
+export interface SetCorrections { metadata: SetCorrection; parts: PartCorrection[]; }

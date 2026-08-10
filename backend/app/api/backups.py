@@ -1,7 +1,7 @@
 from datetime import UTC, datetime
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_request_settings, require_auth
@@ -24,8 +24,11 @@ def _validation_error(error: BackupValidationError) -> HTTPException:
 
 
 @router.get("/export", response_model=BackupV1, response_model_by_alias=True)
-def export(session: Annotated[Session, Depends(get_session)]) -> BackupV1:
-    return export_backup(session)
+def export(response: Response, session: Annotated[Session, Depends(get_session)]) -> BackupV1:
+    backup = export_backup(session)
+    stamp = backup.exported_at.astimezone(UTC).strftime("%Y%m%dT%H%M%SZ")
+    response.headers["Content-Disposition"] = f'attachment; filename="what2build-backup-{stamp}.json"'
+    return backup
 
 
 @router.post("/validate", response_model=BackupValidationResponse)

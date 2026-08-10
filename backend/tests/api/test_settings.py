@@ -27,6 +27,8 @@ def test_backup_routes_export_validate_import_and_write_safety_copy(
     assert client.post("/api/auth/login", json={"password": "build-stuff"}).status_code == 204
     exported = client.get("/api/backups/export")
     assert exported.status_code == 200
+    assert exported.headers["content-disposition"].startswith('attachment; filename="what2build-backup-')
+    assert exported.headers["content-disposition"].endswith('.json"')
     payload = exported.json()
     payload["owned_sets"] = [{"set_num": "1000-1", "quantity": 1, "completeness": "complete", "unknown_missing_count": 0, "unknown_missing_note": None, "notes": None}]
     assert client.post("/api/backups/validate", json=payload).json() == {"valid": True, "missing_dependencies": {}}

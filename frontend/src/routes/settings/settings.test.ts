@@ -41,4 +41,20 @@ describe('settings page', () => {
 		await fireEvent.click(screen.getByRole('button', { name: 'Save group' }));
 		expect(await screen.findByText('Jumper variants')).toBeInTheDocument();
 	});
+
+	it('shows structured missing backup dependencies from a 422 validation response', async () => {
+		vi.mocked(globalThis.fetch).mockImplementation(async (input, init) => {
+			const url = String(input); const method = init?.method ?? 'GET';
+			if (url === '/api/settings/status') return json({ api_key_configured: false, last_successful_import: null, latest_failed_import: null, catalog_counts: { sets: 0, parts: 0, colors: 0 }, database_label: 'what2build.db', backup_schema: 'what2build.backup/v1' });
+			if (url === '/api/equivalence-groups') return json([]);
+			if (url === '/api/backups/validate' && method === 'POST') return json({ detail: { code: 'missing_catalog_dependencies', message: 'Import catalog records first', missing_dependencies: { sets: ['10497-1'], parts: ['3001'] } } }, 422);
+			return json({}, 500);
+		});
+		render(SettingsPage);
+		const file = new File([JSON.stringify(validBackup)], 'what2build-backup.json', { type: 'application/json' });
+		await fireEvent.change(await screen.findByLabelText('Backup file'), { target: { files: [file] } });
+		expect(await screen.findByText(/sets: 10497-1, parts: 3001/)).toBeInTheDocument();
+		expect(screen.queryByRole('button', { name: 'Merge local data' })).not.toBeInTheDocument();
+		expect(screen.getByRole('link', { name: 'Import the catalog first.' })).toHaveAttribute('href', '#catalog-import');
+	});
 });
