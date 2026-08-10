@@ -149,6 +149,8 @@ def restore_backup(session: Session, backup: BackupV1, mode: str) -> RestoreSumm
     if mode not in {"replace", "merge"}:
         raise BackupValidationError("invalid_mode", "mode must be replace or merge")
     validate_backup(session, backup)
+    if mode == "merge":
+        _validate_merge_equivalence_groups(session, backup)
     summary = RestoreSummary(owned_sets=len(backup.owned_sets), missing_parts=len(backup.missing_parts), set_overrides=len(backup.set_overrides), set_part_overrides=len(backup.set_part_overrides), equivalence_groups=len(backup.equivalence_groups), settings=len(backup.settings))
     try:
         with session.begin_nested():
@@ -173,6 +175,29 @@ def _replace(session: Session, backup: BackupV1) -> None:
     session.execute(delete(EquivalenceGroup))
     session.execute(delete(AppSetting).where(AppSetting.secret.is_(False)))
     _insert_all(session, backup)
+
+
+def _validate_merge_equivalence_groups(session: Session, backup: BackupV1) -> None:
+    existing_groups = {
+        group.name: group.id
+        for group in session.scalars(select(EquivalenceGroup)).all()
+    }
+    existing_members = {
+        group_id: set(session.scalars(select(EquivalenceMember.part_num).where(EquivalenceMember.group_id == group_id)).all())
+        for group_id in existing_groups.values()
+    }
+    members_by_part = {
+        part_num: group_id
+        for group_id, members in existing_members.items()
+        for part_num in members
+    }
+    for row in backup.equivalence_groups:
+        current_id = existing_groups.get(row.name)
+        if current_id is not None and existing_members[current_id] == set(row.part_nums):
+            continue
+        overlap = [part_num for part_num in row.part_nums if part_num in members_by_part]
+        if overlap:
+            raise BackupValidationError("part_already_grouped", f"Part {min(overlap)} already belongs to an equivalence group")
 
 
 def _insert_all(session: Session, backup: BackupV1) -> None:

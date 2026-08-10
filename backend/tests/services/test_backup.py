@@ -25,6 +25,8 @@ def seed_catalog(session: Session) -> None:
         CatalogSet(set_num="2000-1", name="Two", num_parts=1, source="test"),
         CatalogPart(part_num="3001", name="Brick", external_ids_json="{}"),
         CatalogPart(part_num="3002", name="Plate", external_ids_json="{}"),
+        CatalogPart(part_num="3003", name="Tile", external_ids_json="{}"),
+        CatalogPart(part_num="3004", name="Slope", external_ids_json="{}"),
         CatalogColor(id=5, name="Red", rgb_hex="C91A09", external_ids_json="{}"),
     ])
     session.commit()
@@ -199,6 +201,32 @@ def test_restore_rejects_invalid_or_overlapping_equivalence_groups_before_mutati
             restore_backup(session, backup, mode=mode)
         assert captured.value.code == code
         assert session.scalars(select(OwnedSet)).one().notes == "keep"
+
+
+def test_merge_rejects_destination_equivalence_member_overlap_before_mutation(session: Session) -> None:
+    seed_catalog(session)
+    existing = EquivalenceGroup(name="A-B")
+    session.add(existing)
+    session.flush()
+    session.add_all([
+        EquivalenceMember(group_id=existing.id, part_num="3001"),
+        EquivalenceMember(group_id=existing.id, part_num="3002"),
+    ])
+    session.add(OwnedSet(set_num="1000-1", notes="keep"))
+    session.commit()
+    overlapping = BackupV1.model_validate({"schema": "what2build.backup/v1", "exported_at": "2026-08-10T12:00:00Z", "owned_sets": [], "missing_parts": [], "set_overrides": [], "set_part_overrides": [], "equivalence_groups": [{"name": "A-C", "part_nums": ["3001", "3003"]}], "settings": {}})
+
+    with pytest.raises(BackupValidationError) as captured:
+        restore_backup(session, overlapping, mode="merge")
+
+    assert captured.value.code == "part_already_grouped"
+    assert session.scalars(select(OwnedSet)).one().notes == "keep"
+    assert session.scalars(select(EquivalenceGroup.name)).all() == ["A-B"]
+
+    non_overlapping = overlapping.model_copy(update={"equivalence_groups": [overlapping.equivalence_groups[0].model_copy(update={"name": "C-D", "part_nums": ["3003", "3004"]})]})
+    summary = restore_backup(session, non_overlapping, mode="merge")
+    assert summary.changed == 1
+    assert set(session.scalars(select(EquivalenceGroup.name)).all()) == {"A-B", "C-D"}
 
 
 def test_backup_writer_refuses_existing_destination_and_creates_parents(
