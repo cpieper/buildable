@@ -13,9 +13,14 @@ from app.services.backup import export_backup, write_backup_json
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="what2build")
     commands = parser.add_subparsers(dest="command", required=True)
-    commands.add_parser(
+    reset_parser = commands.add_parser(
         "reset-password",
         help="replace the shared password and invalidate existing sessions",
+    )
+    reset_parser.add_argument(
+        "--stdin",
+        action="store_true",
+        help="read the new password and confirmation as two newline-delimited values",
     )
     export_parser = commands.add_parser("export-backup", help="write a versioned personal-data backup")
     export_parser.add_argument("path", type=Path)
@@ -38,8 +43,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.command != "reset-password":
         return 1
 
-    password = getpass.getpass("New password: ")
-    confirmation = getpass.getpass("Confirm new password: ")
+    if args.stdin:
+        password = sys.stdin.readline().rstrip("\n")
+        confirmation = sys.stdin.readline().rstrip("\n")
+        if not password or not confirmation:
+            print("Expected password and confirmation on standard input.", file=sys.stderr)
+            return 1
+    else:
+        password = getpass.getpass("New password: ")
+        confirmation = getpass.getpass("Confirm new password: ")
     if password != confirmation:
         print("Passwords do not match.", file=sys.stderr)
         return 1

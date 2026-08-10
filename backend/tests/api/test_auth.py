@@ -461,3 +461,24 @@ def test_cli_reset_password_rejects_mismatched_confirmation(
             "unchanged-password", password_setting.value
         )
         assert revision_setting.value == "1"
+
+
+def test_cli_reset_password_accepts_two_newline_delimited_values_from_stdin(
+    tmp_path: Path,
+    session_factory: sessionmaker[Session],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from io import StringIO
+
+    from app import cli
+
+    settings = Settings(data_dir=tmp_path, database_url=f"sqlite:///{tmp_path / 'unused.db'}")
+    monkeypatch.setattr(cli, "get_settings", lambda: settings)
+    monkeypatch.setattr(cli, "SessionFactory", session_factory)
+    monkeypatch.setattr(cli.sys, "stdin", StringIO("stdin-password\nstdin-password\n"))
+
+    assert cli.main(["reset-password", "--stdin"]) == 0
+
+    with session_factory() as session:
+        password_setting = session.get_one(AppSetting, "auth.password_hash")
+        assert PasswordHash.recommended().verify("stdin-password", password_setting.value)

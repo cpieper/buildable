@@ -1,0 +1,19 @@
+services:
+  app:
+    build: .
+    ports:
+      - "${WHAT2BUILD_PORT:-8000}:8000"
+    env_file:
+      - .env
+    environment:
+      WHAT2BUILD_DATABASE_URL: sqlite:////data/what2build.db
+      WHAT2BUILD_SESSION_SECRET: ${WHAT2BUILD_SESSION_SECRET:?set WHAT2BUILD_SESSION_SECRET in .env}
+    volumes:
+      - ./data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "from urllib.request import urlopen; urlopen('http://127.0.0.1:8000/api/health').read()"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s

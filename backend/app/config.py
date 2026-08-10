@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     session_secret: str = "development-only-change-me"
     secure_cookies: bool = False
     rebrickable_api_key: str | None = None
+    initial_password: str | None = None
 
     model_config = SettingsConfigDict(env_prefix="WHAT2BUILD_", env_file=".env")
 
