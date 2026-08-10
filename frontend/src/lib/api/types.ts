@@ -17,3 +17,9 @@ export interface MatchColor { id: number; name: string; rgb_hex: string; }
 export interface Substitution { required_part: MatchPart; required_color: MatchColor; supplied_part: MatchPart; supplied_color: MatchColor; quantity: number; kind: 'color' | 'equivalent_exact_color' | 'equivalent_color'; }
 export interface MissingRequirement { part_num: string; part_name: string; color_id: number; color_name: string; quantity: number; }
 export interface MatchDetail extends Recommendation { external_url: string | null; instructions_url: string | null; substitutions: Substitution[]; missing: MissingRequirement[]; warnings: InventoryWarning[]; }
+export interface SettingsStatus { api_key_configured: boolean; last_successful_import: string | null; latest_failed_import: string | null; catalog_counts: { sets: number; parts: number; colors: number }; database_label: string; backup_schema: string; }
+export interface ImportSummary { sets: number; parts: number; colors: number; warnings: string[]; started_at: string; completed_at: string; sync_run_id: number; }
+export interface EquivalenceGroup { id: number; name: string; part_nums: string[]; notes: string | null; created_at: string; updated_at: string; }
+export interface BackupValidation { valid: boolean; missing_dependencies: Record<string, Array<string | number>>; }
+export interface RestoreSummary { owned_sets: number; missing_parts: number; set_overrides: number; set_part_overrides: number; equivalence_groups: number; settings: number; changed: number; skipped: number; conflicting: number; safety_backup: string | null; }
+export interface SetCorrection { imported: Record<string, unknown>; override: (Record<string, unknown> & { reason?: string }) | null; effective: Record<string, unknown>; has_local_overrides: boolean; }

@@ -23,6 +23,7 @@ describe('set detail page', () => {
 	it('explains required and supplied colors in Builder Bench detail', async () => {
 		render(SetDetailPage);
 		expect(await screen.findByRole('heading', { name: /Galaxy Explorer/ })).toBeInTheDocument();
+		expect(screen.getByRole('link', { name: 'Correct catalog data' })).toHaveAttribute('href', '/settings?set=10497-1');
 		expect(screen.getByText('Needs Bright Red')).toBeInTheDocument();
 		expect(screen.getByText('Use Dark Blue')).toBeInTheDocument();
 		expect(screen.getByRole('link', { name: 'Instructions' })).toHaveAttribute('target', '_blank');
