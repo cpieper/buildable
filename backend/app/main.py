@@ -8,6 +8,8 @@ from app.api.auth import router as auth_router
 from app.api.catalog import router as catalog_router
 from app.api.collection import router as collection_router
 from app.api.inventory import router as inventory_router
+from app.api.matches import router as matches_router
+from app.api.recommendations import router as recommendations_router
 from app.config import Settings, get_settings
 from app.db import get_session, upgrade_database
 
@@ -39,6 +41,8 @@ def create_app(
     app.include_router(catalog_router)
     app.include_router(collection_router)
     app.include_router(inventory_router)
+    app.include_router(matches_router)
+    app.include_router(recommendations_router)
 
     @app.get("/api/health", tags=["system"])
     def health() -> dict[str, str]:
