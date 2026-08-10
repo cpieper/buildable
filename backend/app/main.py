@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from sqlalchemy.orm import Session, sessionmaker
 
+from app.api.auth import router as auth_router
 from app.config import Settings, get_settings
 from app.db import upgrade_database
 
@@ -23,6 +24,8 @@ def create_app(
         yield
 
     app = FastAPI(title="What2Build", version="0.1.0", lifespan=lifespan)
+    app.state.settings = app_settings
+    app.include_router(auth_router)
 
     @app.get("/api/health", tags=["system"])
     def health() -> dict[str, str]:

@@ -18,9 +18,16 @@ dependencies = [
     "sqlalchemy>=2,<3",
 ]
 
+[project.scripts]
+what2build = "app.cli:main"
+
 [build-system]
 requires = ["uv_build>=0.10.3,<0.11.0"]
 build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-root = ""
+module-name = "app"
 
 [dependency-groups]
 dev = [

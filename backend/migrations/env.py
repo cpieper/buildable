@@ -5,9 +5,8 @@ from alembic import context
 from sqlalchemy import engine_from_config, pool
 from sqlalchemy.engine import make_url
 
-from app.db import Base
 from app import models  # noqa: F401
-
+from app.db import Base
 
 config = context.config
 
