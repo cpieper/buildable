@@ -3,8 +3,8 @@
 	import { page } from '$app/state';
 	import { ApiError } from '$lib/api/client';
 	import { session } from '$lib/stores/session.svelte';
+	import { safeNext } from '$lib/navigation/routes';
 	let password = $state(''); let error = $state(''); let submitting = $state(false);
-	function safeNext(value: string | null) { return value?.startsWith('/') && !value.startsWith('//') ? value : '/buildable'; }
 	async function unlock() { error = ''; submitting = true; try { await session.login(password); await goto(safeNext(page.url.searchParams.get('next'))); } catch (cause) { error = cause instanceof ApiError ? cause.message : 'Unable to unlock the workshop.'; } finally { submitting = false; } }
 </script>
 <svelte:head><title>Unlock · What2Build</title></svelte:head>

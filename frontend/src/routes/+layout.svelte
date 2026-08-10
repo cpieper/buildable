@@ -8,7 +8,7 @@
 
 	let { children } = $props();
 	$effect(() => { if (browser) void session.load(); });
-	$effect(() => { if (browser && !session.loading && page.url.pathname !== '/unlock' && !session.authenticated) void goto(`/unlock?next=${encodeURIComponent(`${page.url.pathname}${page.url.search}`)}`); });
+	$effect(() => { if (!browser || session.loading) return; if (page.url.pathname === '/') { void goto(session.authenticated ? '/buildable' : '/unlock'); return; } if (page.url.pathname !== '/unlock' && !session.authenticated) void goto(`/unlock?next=${encodeURIComponent(`${page.url.pathname}${page.url.search}`)}`); });
 </script>
 
 {#if page.url.pathname === '/unlock'}
