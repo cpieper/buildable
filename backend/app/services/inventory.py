@@ -52,11 +52,13 @@ def compute_inventory(session: Session) -> InventorySnapshot:
     details: dict[tuple[str, int], tuple[str, str, str, str | None]] = {}
     sources: dict[tuple[str, int], set[str]] = defaultdict(set)
     warnings: list[InventoryWarning] = []
+    effective_by_owned_id = {}
     owned_sets = session.scalars(select(OwnedSet).order_by(OwnedSet.id)).all()
     for owned in owned_sets:
         effective = repository.get_effective_set(owned.set_num)
         if effective is None:
             continue
+        effective_by_owned_id[owned.id] = effective
         for part in effective.parts:
             key = (part.part_num, part.color_id)
             quantities[key] += part.quantity * owned.quantity
@@ -81,35 +83,42 @@ def compute_inventory(session: Session) -> InventorySnapshot:
     missing_rows = session.scalars(
         select(OwnedSetMissingPart).order_by(OwnedSetMissingPart.id)
     ).all()
-    owned_by_id = {owned.id: owned for owned in owned_sets}
+    missing_quantities: dict[tuple[int, str, int], int] = defaultdict(int)
     for missing in missing_rows:
-        owned = owned_by_id.get(missing.owned_set_id)
-        if owned is None:
+        missing_quantities[
+            (missing.owned_set_id, missing.part_num, missing.color_id)
+        ] += missing.quantity
+    owned_by_id = {owned.id: owned for owned in owned_sets}
+    for (
+        owned_set_id,
+        part_num,
+        color_id,
+    ), missing_quantity in missing_quantities.items():
+        owned = owned_by_id.get(owned_set_id)
+        effective = effective_by_owned_id.get(owned_set_id)
+        if owned is None or effective is None:
             continue
-        key = (missing.part_num, missing.color_id)
+        key = (part_num, color_id)
         available = quantities[key]
-        quantities[key] = max(0, available - missing.quantity)
-        effective = repository.get_effective_set(owned.set_num)
-        if effective is not None:
-            expected = (
-                sum(
-                    part.quantity
-                    for part in effective.parts
-                    if part.part_num == missing.part_num
-                    and part.color_id == missing.color_id
-                )
-                * owned.quantity
+        quantities[key] = max(0, available - missing_quantity)
+        expected = (
+            sum(
+                part.quantity
+                for part in effective.parts
+                if part.part_num == part_num and part.color_id == color_id
             )
-            if missing.quantity > expected:
-                warnings.append(
-                    InventoryWarning(
-                        owned.id,
-                        effective.set_num,
-                        effective.name,
-                        None,
-                        "Recorded missing quantity exceeds available expected quantity.",
-                    )
+            * owned.quantity
+        )
+        if missing_quantity > expected:
+            warnings.append(
+                InventoryWarning(
+                    owned.id,
+                    effective.set_num,
+                    effective.name,
+                    None,
+                    "Recorded missing quantity exceeds available expected quantity.",
                 )
+            )
 
     items = tuple(
         InventoryItem(

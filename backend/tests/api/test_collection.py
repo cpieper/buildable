@@ -164,3 +164,32 @@ def test_inventory_search_color_pagination_and_warnings(
         ).json()["items"][0]["part_num"]
         == "6141"
     )
+
+
+def test_quantity_reduction_allows_exact_missing_boundary_and_rejects_below_it(
+    authenticated_client: TestClient,
+) -> None:
+    _catalog(authenticated_client)
+    owned = authenticated_client.post(
+        "/api/collection", json={"set_num": "1234-1", "quantity": 4}
+    ).json()
+    owned_id = owned["id"]
+    assert (
+        authenticated_client.post(
+            f"/api/collection/{owned_id}/missing-parts",
+            json={"part_num": "3001", "color_id": 5, "quantity": 6},
+        ).status_code
+        == 201
+    )
+
+    at_boundary = authenticated_client.patch(
+        f"/api/collection/{owned_id}", json={"quantity": 3}
+    )
+
+    assert at_boundary.status_code == 200
+    assert at_boundary.json()["quantity"] == 3
+    below_boundary = authenticated_client.patch(
+        f"/api/collection/{owned_id}", json={"quantity": 2}
+    )
+    assert below_boundary.status_code == 422
+    assert authenticated_client.get("/api/collection").json()[0]["quantity"] == 3

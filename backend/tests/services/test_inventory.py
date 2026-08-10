@@ -86,3 +86,30 @@ def test_unknown_missing_note_warns_without_changing_math(session: Session) -> N
 
     assert snapshot.quantity("3001", 5) == 2
     assert snapshot.warnings[0].set_num == "1234-1"
+
+
+def test_duplicate_missing_rows_are_aggregated_before_clamping_and_warning(
+    session: Session,
+) -> None:
+    seed_set_with_parts(session, "1234-1", [("3001", 5, 3, False)])
+    owned = OwnedSet(set_num="1234-1", quantity=1, completeness="incomplete")
+    session.add(owned)
+    session.commit()
+    session.add_all(
+        [
+            OwnedSetMissingPart(
+                owned_set_id=owned.id, part_num="3001", color_id=5, quantity=2
+            ),
+            OwnedSetMissingPart(
+                owned_set_id=owned.id, part_num="3001", color_id=5, quantity=2
+            ),
+        ]
+    )
+    session.commit()
+
+    snapshot = compute_inventory(session)
+
+    assert snapshot.quantity("3001", 5) == 0
+    assert snapshot.total_quantity == 0
+    assert len(snapshot.warnings) == 1
+    assert snapshot.warnings[0].owned_set_id == owned.id

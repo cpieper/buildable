@@ -88,7 +88,7 @@ def _validate_missing_total(
         )
 
 
-def _validate_all_missing(session: Session, owned: OwnedSet, quantity: int) -> None:
+def _validate_all_missing(session: Session, owned: OwnedSet) -> None:
     for part_num, color_id, missing_total in session.execute(
         select(
             OwnedSetMissingPart.part_num,
@@ -98,7 +98,22 @@ def _validate_all_missing(session: Session, owned: OwnedSet, quantity: int) -> N
         .where(OwnedSetMissingPart.owned_set_id == owned.id)
         .group_by(OwnedSetMissingPart.part_num, OwnedSetMissingPart.color_id)
     ):
-        _validate_missing_total(session, owned, part_num, color_id, missing_total, None)
+        effective = CatalogRepository(session).get_effective_set(owned.set_num)
+        if effective is None:
+            raise HTTPException(status_code=404, detail="Catalog set not found")
+        expected = (
+            sum(
+                part.quantity
+                for part in effective.parts
+                if part.part_num == part_num and part.color_id == color_id
+            )
+            * owned.quantity
+        )
+        if missing_total > expected:
+            raise HTTPException(
+                status_code=422,
+                detail="Missing quantity exceeds effective expected quantity",
+            )
 
 
 @router.get("", response_model=list[OwnedSetResponse])
@@ -141,7 +156,7 @@ def update_set(
         original = owned.quantity
         owned.quantity = new_quantity
         try:
-            _validate_all_missing(session, owned, new_quantity)
+            _validate_all_missing(session, owned)
         except Exception:
             owned.quantity = original
             raise
