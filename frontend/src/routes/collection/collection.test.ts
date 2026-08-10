@@ -33,4 +33,27 @@ describe('collection page', () => {
 		await fireEvent.click(screen.getByRole('button', { name: 'Save missing piece' }));
 		expect(await screen.findByText('2 known missing')).toBeInTheDocument();
 	});
+
+	it('collects add details and imports a selected remote result before saving it', async () => {
+		let remoteImported = false;
+		vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+			const url = String(input); const method = init?.method ?? 'GET';
+			if (url === '/api/collection') return json([]);
+			if (url === '/api/settings/status') return json({ api_key_configured: true });
+			if (url.startsWith('/api/catalog/sets?')) return json([]);
+			if (url.startsWith('/api/catalog/remote-search?')) return json([{ set_num: '99999-1', name: 'Remote Explorer', year: 2026, theme_id: 1, num_parts: 10, image_url: 'https://example.com/set.png', external_url: null }]);
+			if (url === '/api/catalog/lookup/99999-1' && method === 'POST') { remoteImported = true; return json({ set: {}, summary: {} }); }
+			if (url === '/api/collection' && method === 'POST') return json(owned, 201);
+			return json({}, 200);
+		});
+		render(CollectionPage);
+		await fireEvent.click(await screen.findByRole('button', { name: 'Add set' }));
+		await fireEvent.input(screen.getByLabelText('Set number or name'), { target: { value: 'Remote Explorer' } });
+		await new Promise((resolve) => setTimeout(resolve, 300));
+		await fireEvent.click(await screen.findByRole('option', { name: /99999-1 Remote Explorer/ }));
+		await fireEvent.input(screen.getByLabelText('Quantity'), { target: { value: '2' } });
+		await fireEvent.input(screen.getByLabelText('Notes'), { target: { value: 'shelf A' } });
+		await fireEvent.click(screen.getByRole('button', { name: 'Add to collection' }));
+		expect(remoteImported).toBe(true);
+	});
 });
