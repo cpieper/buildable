@@ -23,10 +23,18 @@ def require_auth(
             detail="Not authenticated",
         )
 
+    password_store = PasswordStore(session)
+    credential_binding = password_store.session_binding()
+    if credential_binding is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Not authenticated",
+        )
     token_revision = SessionSigner(
-        get_request_settings(request).session_secret
+        get_request_settings(request).session_secret,
+        credential_binding,
     ).read(token)
-    stored_revision = PasswordStore(session).revision()
+    stored_revision = password_store.revision()
     if token_revision is None or token_revision != stored_revision:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

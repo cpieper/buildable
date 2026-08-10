@@ -1,3 +1,5 @@
+from hashlib import sha256
+from hmac import new as hmac_new
 from secrets import randbits
 from typing import Any
 
@@ -31,6 +33,10 @@ class PasswordStore:
             return password_hash.verify(password, setting.value)
         except (PwdlibError, ValueError):
             return False
+
+    def session_binding(self) -> str | None:
+        setting = self.session.get(AppSetting, PASSWORD_HASH_KEY)
+        return setting.value if setting is not None else None
 
     def revision(self) -> int | None:
         setting = self.session.get(AppSetting, REVISION_KEY)
@@ -104,8 +110,13 @@ class PasswordStore:
 
 
 class SessionSigner:
-    def __init__(self, secret: str) -> None:
-        self.serializer = URLSafeTimedSerializer(secret)
+    def __init__(self, secret: str, credential_binding: str) -> None:
+        signing_key = hmac_new(
+            secret.encode(),
+            credential_binding.encode(),
+            sha256,
+        ).digest()
+        self.serializer = URLSafeTimedSerializer(signing_key)
 
     def create(self, revision: int) -> str:
         return self.serializer.dumps(

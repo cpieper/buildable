@@ -22,8 +22,12 @@ def set_session_cookie(
     *,
     settings: Settings,
     revision: int,
+    credential_binding: str,
 ) -> None:
-    token = SessionSigner(settings.session_secret).create(revision)
+    token = SessionSigner(
+        settings.session_secret,
+        credential_binding,
+    ).create(revision)
     response.set_cookie(
         SESSION_COOKIE_NAME,
         token,
@@ -51,12 +55,18 @@ def login(
 ) -> None:
     password_store = PasswordStore(session)
     revision = password_store.revision()
-    if not password_store.verify(payload.password) or revision is None:
+    credential_binding = password_store.session_binding()
+    if (
+        not password_store.verify(payload.password)
+        or revision is None
+        or credential_binding is None
+    ):
         raise invalid_password()
     set_session_cookie(
         response,
         settings=get_request_settings(request),
         revision=revision,
+        credential_binding=credential_binding,
     )
 
 
@@ -96,8 +106,12 @@ def change_password(
     if not password_store.verify(payload.current_password):
         raise invalid_password()
     revision = password_store.set_password(payload.new_password)
+    credential_binding = password_store.session_binding()
+    if credential_binding is None:
+        raise RuntimeError("Password hash missing after password change")
     set_session_cookie(
         response,
         settings=get_request_settings(request),
         revision=revision,
+        credential_binding=credential_binding,
     )

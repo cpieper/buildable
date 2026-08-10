@@ -7,7 +7,6 @@ from time import time
 import pytest
 from fastapi import Depends, FastAPI
 from fastapi.testclient import TestClient
-from itsdangerous import URLSafeTimedSerializer
 from pwdlib import PasswordHash
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -185,18 +184,25 @@ def test_logout_clears_cookie_and_invalidates_session(
 def test_session_rejects_cookie_older_than_thirty_days(
     client: TestClient,
     password_store: PasswordStoreFixture,
+    session_factory: sessionmaker[Session],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     password_store.set_password("build-stuff")
+    with session_factory() as session:
+        credential_binding = auth_service.PasswordStore(
+            session
+        ).session_binding()
+    assert credential_binding is not None
     current_time = int(time())
     with monkeypatch.context() as timestamp_patch:
         timestamp_patch.setattr(
             "itsdangerous.timed.time.time",
             lambda: current_time - (60 * 60 * 24 * 30) - 1,
         )
-        expired_token = URLSafeTimedSerializer(
-            "development-only-change-me"
-        ).dumps({"authenticated": True, "revision": 1})
+        expired_token = auth_service.SessionSigner(
+            "development-only-change-me",
+            credential_binding,
+        ).create(1)
     client.cookies.set("what2build_session", expired_token)
 
     response = client.get("/api/auth/session")
@@ -235,18 +241,23 @@ def test_concurrent_password_resets_publish_distinct_revisions(
 
     monkeypatch.setattr(auth_service, "password_hash", CoordinatedHasher())
 
-    def reset_password(password: str) -> int:
+    def reset_password(password: str) -> tuple[str, int]:
         with session_factory() as session:
-            return auth_service.PasswordStore(session).set_password(password)
+            revision = auth_service.PasswordStore(session).set_password(password)
+        return password, revision
 
     with ThreadPoolExecutor(max_workers=2) as executor:
-        revisions = list(
+        reset_results = list(
             executor.map(reset_password, ["first-reset", "second-reset"])
         )
 
-    assert sorted(revisions) == [2, 3]
+    assert sorted(revision for _, revision in reset_results) == [2, 3]
+    earlier_password = next(
+        password for password, revision in reset_results if revision == 2
+    )
     earlier_token = auth_service.SessionSigner(
-        "development-only-change-me"
+        "development-only-change-me",
+        f"test-hash:{earlier_password}",
     ).create(2)
     client.cookies.set("what2build_session", earlier_token)
     assert client.get("/api/auth/session").status_code == 401
@@ -276,6 +287,34 @@ def test_password_reset_repairs_corrupt_revision_without_recycling_old_cookie(
 
     assert repaired_revision > 1
     client.cookies.set("what2build_session", revision_one_cookie)
+    assert client.get("/api/auth/session").status_code == 401
+
+
+def test_password_reset_invalidates_cookie_when_repair_reuses_high_revision(
+    client: TestClient,
+    password_store: PasswordStoreFixture,
+    session_factory: sessionmaker[Session],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    high_revision = (1 << 61) + 777
+    password_store.set_password("old-password", revision=high_revision)
+    login_response = client.post(
+        "/api/auth/login", json={"password": "old-password"}
+    )
+    assert login_response.status_code == 204
+    assert client.get("/api/auth/session").status_code == 200
+    old_cookie = client.cookies.get("what2build_session")
+    with session_factory.begin() as session:
+        session.get_one(AppSetting, "auth.revision").value = "malformed"
+    monkeypatch.setattr(auth_service, "randbits", lambda _bits: high_revision)
+
+    with session_factory() as session:
+        repaired_revision = auth_service.PasswordStore(session).set_password(
+            "new-password"
+        )
+
+    assert repaired_revision == high_revision
+    client.cookies.set("what2build_session", old_cookie)
     assert client.get("/api/auth/session").status_code == 401
 
 
