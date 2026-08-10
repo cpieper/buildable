@@ -5,6 +5,7 @@ from fastapi import FastAPI
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.api.auth import router as auth_router
+from app.api.backups import router as backups_router
 from app.api.catalog import router as catalog_router
 from app.api.collection import router as collection_router
 from app.api.equivalence import router as equivalence_router
@@ -12,6 +13,7 @@ from app.api.inventory import router as inventory_router
 from app.api.matches import router as matches_router
 from app.api.overrides import router as overrides_router
 from app.api.recommendations import router as recommendations_router
+from app.api.settings import router as settings_router
 from app.config import Settings, get_settings
 from app.db import get_session, upgrade_database
 
@@ -40,6 +42,7 @@ def create_app(
 
         app.dependency_overrides[get_session] = get_injected_session
     app.include_router(auth_router)
+    app.include_router(backups_router)
     app.include_router(catalog_router)
     app.include_router(collection_router)
     app.include_router(inventory_router)
@@ -47,6 +50,7 @@ def create_app(
     app.include_router(overrides_router)
     app.include_router(equivalence_router)
     app.include_router(recommendations_router)
+    app.include_router(settings_router)
 
     @app.get("/api/health", tags=["system"])
     def health() -> dict[str, str]:
