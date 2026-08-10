@@ -97,10 +97,48 @@ describe('CorrectionEditor', () => {
 		render(CorrectionEditor);
 		await fireEvent.input(screen.getByLabelText('Set number'), { target: { value: '1234-1' } });
 		await fireEvent.click(screen.getByRole('button', { name: 'Load set' }));
-		await fireEvent.click(await screen.findByRole('button', { name: 'Correct part' }));
+		await fireEvent.click((await screen.findAllByRole('button', { name: 'Correct part' }))[0]);
 		await fireEvent.input(screen.getAllByLabelText('Correction reason').at(-1)!, { target: { value: 'Restore source row' } });
 		await fireEvent.click(screen.getByRole('button', { name: 'Remove local correction' }));
 		expect(await screen.findByText(/Imported quantity 2 · Local none · Effective quantity 2/)).toBeInTheDocument();
 		expect(deleteCalls).toEqual([{ is_spare: true, reason: 'Restore source row' }, { is_spare: false, reason: 'Restore source row' }]);
+	});
+
+	it('shows and restores a standalone delete missing from effective catalog results', async () => {
+		const deleted = { imported: set.parts[0], override: { ...part.override, operation: 'delete', quantity: null }, effective: null, has_local_overrides: true };
+		let restored = false;
+		vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+			const url = String(input); const method = init?.method ?? 'GET';
+			if (url === '/api/catalog/sets/1234-1') return json(restored ? set : { ...set, parts: [] });
+			if (url === '/api/overrides/sets/1234-1' && method === 'GET') return restored ? json({ detail: 'No local overrides for set' }, 404) : json({ metadata, parts: [deleted] });
+			if (url === '/api/overrides/sets/1234-1/parts/3001/5' && method === 'DELETE') { restored = true; return new Response(null, { status: 204 }); }
+			return json({}, 500);
+		});
+		render(CorrectionEditor);
+		await fireEvent.input(screen.getByLabelText('Set number'), { target: { value: '1234-1' } });
+		await fireEvent.click(screen.getByRole('button', { name: 'Load set' }));
+		expect(await screen.findByText(/Imported quantity 2 · Local delete · Effective quantity 0/)).toBeInTheDocument();
+		await fireEvent.click(screen.getByRole('button', { name: 'Correct part' }));
+		await fireEvent.input(screen.getAllByLabelText('Correction reason').at(-1)!, { target: { value: 'Restore row' } });
+		await fireEvent.click(screen.getByRole('button', { name: 'Remove local correction' }));
+		expect(await screen.findByText(/Imported quantity 2 · Local none · Effective quantity 2/)).toBeInTheDocument();
+	});
+
+	it('saves only metadata fields intentionally changed from their effective values', async () => {
+		let payload: Record<string, unknown> | null = null;
+		vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+			const url = String(input); const method = init?.method ?? 'GET';
+			if (url === '/api/catalog/sets/1234-1') return json(set);
+			if (url === '/api/overrides/sets/1234-1' && method === 'GET') return json({ metadata, parts: [] });
+			if (url === '/api/overrides/sets/1234-1' && method === 'PUT') { payload = JSON.parse(String(init?.body)); return json(metadata); }
+			return json({}, 500);
+		});
+		render(CorrectionEditor);
+		await fireEvent.input(screen.getByLabelText('Set number'), { target: { value: '1234-1' } });
+		await fireEvent.click(screen.getByRole('button', { name: 'Load set' }));
+		await fireEvent.input(await screen.findByLabelText('Name'), { target: { value: 'New title' } });
+		await fireEvent.input(screen.getByLabelText('Correction reason'), { target: { value: 'Correct title' } });
+		await fireEvent.click(screen.getByRole('button', { name: 'Save correction' }));
+		expect(payload).toEqual({ name: 'New title', reason: 'Correct title' });
 	});
 });

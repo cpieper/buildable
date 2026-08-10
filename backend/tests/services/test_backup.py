@@ -24,6 +24,7 @@ def seed_catalog(session: Session) -> None:
         CatalogSet(set_num="1000-1", name="One", num_parts=1, source="test"),
         CatalogSet(set_num="2000-1", name="Two", num_parts=1, source="test"),
         CatalogPart(part_num="3001", name="Brick", external_ids_json="{}"),
+        CatalogPart(part_num="3002", name="Plate", external_ids_json="{}"),
         CatalogColor(id=5, name="Red", rgb_hex="C91A09", external_ids_json="{}"),
     ])
     session.commit()
@@ -40,6 +41,7 @@ def seed_personal_data(session: Session) -> None:
     session.add(group)
     session.flush()
     session.add(EquivalenceMember(group_id=group.id, part_num="3001"))
+    session.add(EquivalenceMember(group_id=group.id, part_num="3002"))
     session.add(AppSetting(key="ui.default_sort", value="buildability", secret=False))
     session.commit()
 
@@ -180,6 +182,23 @@ def test_merge_reports_conflicts_and_rejects_duplicate_natural_keys(session: Ses
         assert error.code == "duplicate_natural_key"
     else:
         raise AssertionError("duplicate keys were accepted")
+
+
+@pytest.mark.parametrize("mode", ["replace", "merge"])
+def test_restore_rejects_invalid_or_overlapping_equivalence_groups_before_mutation(
+    session: Session, mode: str
+) -> None:
+    seed_catalog(session)
+    session.add(OwnedSet(set_num="1000-1", notes="keep"))
+    session.commit()
+    singleton = BackupV1.model_validate({"schema": "what2build.backup/v1", "exported_at": "2026-08-10T12:00:00Z", "owned_sets": [], "missing_parts": [], "set_overrides": [], "set_part_overrides": [], "equivalence_groups": [{"name": "Only one", "part_nums": ["3001"]}], "settings": {}})
+    overlapping = BackupV1.model_validate({"schema": "what2build.backup/v1", "exported_at": "2026-08-10T12:00:00Z", "owned_sets": [], "missing_parts": [], "set_overrides": [], "set_part_overrides": [], "equivalence_groups": [{"name": "A-B", "part_nums": ["3001", "3002"]}, {"name": "A-C", "part_nums": ["3001", "3003"]}], "settings": {}})
+
+    for backup, code in ((singleton, "invalid_equivalence_group"), (overlapping, "part_already_grouped")):
+        with pytest.raises(BackupValidationError) as captured:
+            restore_backup(session, backup, mode=mode)
+        assert captured.value.code == code
+        assert session.scalars(select(OwnedSet)).one().notes == "keep"
 
 
 def test_backup_writer_refuses_existing_destination_and_creates_parents(

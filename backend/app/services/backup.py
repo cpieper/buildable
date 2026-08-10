@@ -81,6 +81,7 @@ def validate_backup(session: Session, backup: BackupV1) -> dict[str, list[str | 
     if backup.schema_name != BACKUP_SCHEMA:
         raise BackupValidationError("unsupported_schema", f"Unsupported backup schema: {backup.schema_name}")
     _reject_duplicates(backup)
+    _validate_equivalence_groups(backup)
     _reject_secret_settings(session, backup)
     set_nums = {row.set_num for row in backup.owned_sets} | {row.set_num for row in backup.missing_parts} | {row.set_num for row in backup.set_overrides} | {row.set_num for row in backup.set_part_overrides}
     part_nums = {row.part_num for row in backup.missing_parts} | {row.part_num for row in backup.set_part_overrides} | {part for group in backup.equivalence_groups for part in group.part_nums}
@@ -131,6 +132,17 @@ def _reject_duplicates(backup: BackupV1) -> None:
     owned = set(groups["owned_sets"])
     if any(row.set_num not in owned for row in backup.missing_parts):
         raise BackupValidationError("missing_owned_set", "Missing parts must reference a backed-up owned set")
+
+
+def _validate_equivalence_groups(backup: BackupV1) -> None:
+    members: set[str] = set()
+    for group in backup.equivalence_groups:
+        if len(group.part_nums) < 2 or len(group.part_nums) != len(set(group.part_nums)):
+            raise BackupValidationError("invalid_equivalence_group", "Equivalence groups require at least two distinct parts")
+        overlap = members.intersection(group.part_nums)
+        if overlap:
+            raise BackupValidationError("part_already_grouped", f"Part {min(overlap)} belongs to more than one equivalence group")
+        members.update(group.part_nums)
 
 
 def restore_backup(session: Session, backup: BackupV1, mode: str) -> RestoreSummary:
