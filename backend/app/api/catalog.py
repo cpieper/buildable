@@ -61,7 +61,8 @@ def remote_search(
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
 ) -> list[RemoteSetSummary]:
     try:
-        return RebrickableClient(settings.rebrickable_api_key).search_sets(q, limit)
+        with RebrickableClient(settings.rebrickable_api_key) as client:
+            return client.search_sets(q, limit)
     except CatalogLookupError as error:
         raise _lookup_error(error) from error
 
@@ -73,7 +74,8 @@ def lookup_set(
     settings: Annotated[Settings, Depends(get_request_settings)],
 ) -> CatalogLookupResponse:
     try:
-        imported = RebrickableClient(settings.rebrickable_api_key).lookup_set(set_num)
+        with RebrickableClient(settings.rebrickable_api_key) as client:
+            imported = client.lookup_set(set_num)
         effective_set, summary = import_rebrickable_set(imported, session)
         return CatalogLookupResponse(set=effective_set, summary=summary)
     except CatalogLookupError as error:

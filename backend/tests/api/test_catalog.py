@@ -251,6 +251,12 @@ def test_remote_search_returns_remote_summaries_without_mutating_cache(
         def __init__(self, api_key: str | None) -> None:
             assert api_key == "secret"
 
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_: object) -> None:
+            pass
+
         def search_sets(self, query: str, limit: int) -> list[RemoteSetSummary]:
             assert (query, limit) == ("Galaxy Explorer", 20)
             return [
@@ -286,6 +292,12 @@ def test_lookup_imports_selected_set_and_returns_sync_summary(
     class FakeRebrickableClient:
         def __init__(self, api_key: str | None) -> None:
             assert api_key == "secret"
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_: object) -> None:
+            pass
 
         def lookup_set(self, set_num: str) -> ImportedSet:
             assert set_num == "10497-1"
@@ -358,6 +370,12 @@ def test_lookup_failure_preserves_existing_cached_set(
         def __init__(self, api_key: str | None) -> None:
             assert api_key == "secret"
 
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_: object) -> None:
+            pass
+
         def lookup_set(self, set_num: str) -> ImportedSet:
             raise CatalogLookupError("unavailable", "Rebrickable is unavailable")
 
@@ -404,6 +422,12 @@ def test_lookup_maps_remote_errors_to_normalized_api_response(
     class FailingRebrickableClient:
         def __init__(self, api_key: str | None) -> None:
             assert api_key == "secret"
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_: object) -> None:
+            pass
 
         def lookup_set(self, set_num: str) -> ImportedSet:
             raise error

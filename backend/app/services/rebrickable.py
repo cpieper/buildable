@@ -1,6 +1,7 @@
 import json
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Self
+from urllib.parse import parse_qs, urlsplit
 
 import httpx
 from sqlalchemy import delete
@@ -24,7 +25,7 @@ from app.services.catalog_import import (
 )
 
 _API_ROOT = "https://rebrickable.com/api/v3/lego/sets"
-_SOURCE = "rebrickable_api"
+_SYNC_SOURCE = "rebrickable_api"
 
 
 class CatalogLookupError(ValueError):
@@ -72,37 +73,48 @@ class RebrickableClient:
             transport=transport,
         )
 
+    def __enter__(self) -> Self:
+        return self
+
+    def __exit__(self, *_: object) -> None:
+        self.close()
+
+    def close(self) -> None:
+        self._client.close()
+
     def search_sets(self, query: str, limit: int) -> list[RemoteSetSummary]:
         results: list[RemoteSetSummary] = []
-        next_url: str | None = f"{_API_ROOT}/"
-        params: dict[str, object] | None = {"search": query, "page_size": limit}
-        while next_url is not None and len(results) < limit:
-            payload = self._json_object(self._request(next_url, params=params))
+        endpoint_path = "/api/v3/lego/sets/"
+        endpoint_url = f"{_API_ROOT}/"
+        base_params: dict[str, object] = {"search": query, "page_size": limit}
+        params: dict[str, object] | None = base_params
+        seen_pages = {1}
+        while params is not None and len(results) < limit:
+            payload = self._json_object(self._request(endpoint_url, params=params))
             results.extend(self._summary(row) for row in self._results(payload))
-            next_value = payload.get("next")
-            if next_value is not None and not isinstance(next_value, str):
-                raise CatalogLookupError("invalid_response", "Invalid upstream response")
-            next_url = next_value
-            params = None
+            params = _next_page_params(
+                payload.get("next"), endpoint_path, base_params, seen_pages
+            )
         return results[:limit]
 
     def lookup_set(self, set_num: str) -> ImportedSet:
         set_payload = self._json_object(self._request(f"{_API_ROOT}/{set_num}/"))
         summary = self._summary(set_payload)
         parts: list[ImportedPart] = []
-        next_url: str | None = f"{_API_ROOT}/{set_num}/parts/"
-        params: dict[str, object] | None = {
+        endpoint_path = f"/api/v3/lego/sets/{set_num}/parts/"
+        endpoint_url = f"{_API_ROOT}/{set_num}/parts/"
+        base_params: dict[str, object] = {
             "inc_minifig_parts": 1,
             "page_size": 1000,
         }
-        while next_url is not None:
-            page = self._json_object(self._request(next_url, params=params))
+        params: dict[str, object] | None = base_params
+        seen_pages = {1}
+        while params is not None:
+            page = self._json_object(self._request(endpoint_url, params=params))
             parts.extend(self._part(row) for row in self._results(page))
-            next_value = page.get("next")
-            if next_value is not None and not isinstance(next_value, str):
-                raise CatalogLookupError("invalid_response", "Invalid upstream response")
-            next_url = next_value
-            params = None
+            params = _next_page_params(
+                page.get("next"), endpoint_path, base_params, seen_pages
+            )
         return ImportedSet(
             set_num=summary.set_num,
             name=summary.name,
@@ -187,7 +199,7 @@ def import_rebrickable_set(imported: ImportedSet, session: Session) -> tuple[Eff
     started_at = utc_now()
     try:
         existing = session.get(CatalogSet, imported.set_num)
-        if existing is not None and existing.source not in {REBRICKABLE_SOURCE, _SOURCE}:
+        if existing is not None and existing.source != REBRICKABLE_SOURCE:
             raise CatalogImportError(f"set {imported.set_num!r} conflicts with source {existing.source!r}")
         if existing is None:
             existing = CatalogSet(set_num=imported.set_num)
@@ -200,7 +212,7 @@ def import_rebrickable_set(imported: ImportedSet, session: Session) -> tuple[Eff
         existing.image_url = imported.image_url
         existing.external_url = imported.external_url
         existing.instructions_url = None
-        existing.source = _SOURCE
+        existing.source = REBRICKABLE_SOURCE
         existing.source_updated_at = None
         existing.imported_at = utc_now()
 
@@ -236,7 +248,7 @@ def import_rebrickable_set(imported: ImportedSet, session: Session) -> tuple[Eff
             )
         completed_at = utc_now()
         summary_data = {"sets": 1, "parts": len(imported.parts), "colors": len({part.color_id for part in imported.parts}), "warnings": []}
-        run = SyncRun(source=_SOURCE, status="completed", started_at=started_at, completed_at=completed_at, summary_json=json.dumps(summary_data), error=None)
+        run = SyncRun(source=_SYNC_SOURCE, status="completed", started_at=started_at, completed_at=completed_at, summary_json=json.dumps(summary_data), error=None)
         session.add(run)
         session.commit()
     except (CatalogImportError, SQLAlchemyError) as error:
@@ -248,6 +260,36 @@ def import_rebrickable_set(imported: ImportedSet, session: Session) -> tuple[Eff
     if result is None:
         raise RuntimeError("looked up set missing after committed import")
     return result, ImportSummary(sync_run_id=run.id, started_at=started_at, completed_at=completed_at, **summary_data)
+
+
+def _next_page_params(
+    next_value: object,
+    endpoint_path: str,
+    base_params: dict[str, object],
+    seen_pages: set[int],
+) -> dict[str, object] | None:
+    if next_value is None:
+        return None
+    if not isinstance(next_value, str):
+        raise CatalogLookupError("invalid_response", "Invalid upstream response")
+    parsed = urlsplit(next_value)
+    if (
+        parsed.scheme != "https"
+        or parsed.netloc != "rebrickable.com"
+        or parsed.path != endpoint_path
+    ):
+        raise CatalogLookupError("invalid_response", "Invalid upstream response")
+    page_values = parse_qs(parsed.query, keep_blank_values=True).get("page")
+    if page_values is None or len(page_values) != 1:
+        raise CatalogLookupError("invalid_response", "Invalid upstream response")
+    try:
+        page = int(page_values[0])
+    except ValueError as error:
+        raise CatalogLookupError("invalid_response", "Invalid upstream response") from error
+    if page < 1 or page in seen_pages:
+        raise CatalogLookupError("invalid_response", "Invalid upstream response")
+    seen_pages.add(page)
+    return {**base_params, "page": page}
 
 
 def _object(values: dict[str, Any], key: str) -> dict[str, Any]:

@@ -1,9 +1,18 @@
+from pathlib import Path
+
 import httpx
 import pytest
 from sqlalchemy.orm import Session
 
 from app.models import CatalogSet
-from app.services.rebrickable import CatalogLookupError, RebrickableClient
+from app.services.catalog_import import import_rebrickable_zip
+from app.services.rebrickable import (
+    CatalogLookupError,
+    ImportedPart,
+    ImportedSet,
+    RebrickableClient,
+    import_rebrickable_set,
+)
 
 
 class MockTransport:
@@ -171,3 +180,116 @@ def test_remote_search_follows_next_page_until_limit() -> None:
 
     assert [result.set_num for result in results] == ["10497-1", "497-1"]
     assert transport.requests[1].url.params["page"] == "2"
+
+
+@pytest.mark.parametrize(
+    "next_url",
+    [
+        "https://attacker.example/api/v3/lego/sets/?page=2",
+        "https://rebrickable.com/api/v3/lego/parts/?page=2",
+    ],
+)
+def test_remote_search_rejects_untrusted_next_without_requesting_it(
+    next_url: str,
+) -> None:
+    """Following a foreign or wrong-path URL would leak the API key."""
+    transport = MockTransport()
+    transport.respond(200, {"next": next_url, "results": []})
+
+    with pytest.raises(CatalogLookupError, match="Invalid upstream response") as error:
+        RebrickableClient("secret", transport=httpx.MockTransport(transport)).search_sets(
+            "Galaxy Explorer", limit=20
+        )
+
+    assert error.value.code == "invalid_response"
+    assert len(transport.requests) == 1
+
+
+def test_remote_search_rejects_cyclic_next_without_requesting_it() -> None:
+    """Repeated pagination URLs would let an upstream response loop forever."""
+    transport = MockTransport()
+    transport.respond(
+        200,
+        {"next": "https://rebrickable.com/api/v3/lego/sets/?page=1", "results": []},
+    )
+
+    with pytest.raises(CatalogLookupError, match="Invalid upstream response") as error:
+        RebrickableClient("secret", transport=httpx.MockTransport(transport)).search_sets(
+            "Galaxy Explorer", limit=20
+        )
+
+    assert error.value.code == "invalid_response"
+    assert len(transport.requests) == 1
+
+
+def test_client_closes_owned_httpx_client() -> None:
+    """Leaving a request-scoped HTTP client open leaks pooled connections."""
+    transport = ClosingTransport()
+
+    with RebrickableClient("secret", transport=transport):
+        pass
+
+    assert transport.closed is True
+
+
+def test_client_closes_owned_httpx_client_when_request_fails() -> None:
+    """An exception path must release the request-scoped connection pool too."""
+    transport = ClosingTransport()
+
+    with (
+        pytest.raises(RuntimeError, match="lookup failed"),
+        RebrickableClient("secret", transport=transport),
+    ):
+        raise RuntimeError("lookup failed")
+
+    assert transport.closed is True
+
+
+def test_targeted_lookup_keeps_csv_source_compatible_with_zip_refresh(
+    session: Session,
+) -> None:
+    """Changing a CSV set's source makes the next ZIP refresh reject it as foreign."""
+    fixture_dir = Path(__file__).parents[1] / "fixtures" / "rebrickable-small"
+    with (fixture_dir / "valid-catalog.zip").open("rb") as archive:
+        import_rebrickable_zip(archive, session)
+    import_rebrickable_set(
+        ImportedSet(
+            set_num="1234-1",
+            name="Updated Castle Cart",
+            year=2024,
+            theme_id=10,
+            num_parts=1,
+            image_url=None,
+            external_url="https://example.test/sets/1234-1",
+            parts=[
+                ImportedPart(
+                    part_num="3001",
+                    part_name="Brick 2 x 4",
+                    part_image_url=None,
+                    color_id=4,
+                    color_name="Red",
+                    rgb_hex="C91A09",
+                    quantity=1,
+                    is_spare=False,
+                    source_id="1",
+                )
+            ],
+        ),
+        session,
+    )
+
+    with (fixture_dir / "valid-catalog.zip").open("rb") as archive:
+        import_rebrickable_zip(archive, session)
+
+    assert session.get_one(CatalogSet, "1234-1").name == "Castle Cart"
+
+
+class ClosingTransport(httpx.BaseTransport):
+    def __init__(self) -> None:
+        self.closed = False
+
+    def handle_request(self, request: httpx.Request) -> httpx.Response:
+        raise AssertionError(f"unexpected request: {request.url}")
+
+    def close(self) -> None:
+        self.closed = True
