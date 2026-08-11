@@ -11,7 +11,7 @@ from app.services.backup import export_backup, write_backup_json
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="what2build")
+    parser = argparse.ArgumentParser(prog="buildable")
     commands = parser.add_subparsers(dest="command", required=True)
     reset_parser = commands.add_parser(
         "reset-password",

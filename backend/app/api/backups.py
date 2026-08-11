@@ -27,7 +27,7 @@ def _validation_error(error: BackupValidationError) -> HTTPException:
 def export(response: Response, session: Annotated[Session, Depends(get_session)]) -> BackupV1:
     backup = export_backup(session)
     stamp = backup.exported_at.astimezone(UTC).strftime("%Y%m%dT%H%M%SZ")
-    response.headers["Content-Disposition"] = f'attachment; filename="what2build-backup-{stamp}.json"'
+    response.headers["Content-Disposition"] = f'attachment; filename="buildable-backup-{stamp}.json"'
     return backup
 
 

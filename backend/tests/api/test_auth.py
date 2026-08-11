@@ -38,6 +38,10 @@ class PasswordStoreFixture:
             )
 
 
+def test_runtime_uses_buildable_title(client: TestClient) -> None:
+    assert client.app.title == "Buildable"
+
+
 @pytest.fixture
 def password_store(
     session_factory: sessionmaker[Session],
@@ -54,7 +58,7 @@ def test_login_sets_required_session_cookie_and_authenticates(
 
     assert response.status_code == 204
     cookie = response.headers["set-cookie"]
-    assert "what2build_session=" in cookie
+    assert "buildable_session=" in cookie
     assert "HttpOnly" in cookie
     assert "Max-Age=2592000" in cookie
     assert "Path=/" in cookie
@@ -176,7 +180,7 @@ def test_logout_clears_cookie_and_invalidates_session(
     response = client.post("/api/auth/logout")
 
     assert response.status_code == 204
-    assert "what2build_session=" in response.headers["set-cookie"]
+    assert "buildable_session=" in response.headers["set-cookie"]
     assert "Max-Age=0" in response.headers["set-cookie"]
     assert client.get("/api/auth/session").status_code == 401
 
@@ -203,7 +207,7 @@ def test_session_rejects_cookie_older_than_thirty_days(
             "development-only-change-me",
             credential_binding,
         ).create(1)
-    client.cookies.set("what2build_session", expired_token)
+    client.cookies.set("buildable_session", expired_token)
 
     response = client.get("/api/auth/session")
 
@@ -259,7 +263,7 @@ def test_concurrent_password_resets_publish_distinct_revisions(
         "development-only-change-me",
         f"test-hash:{earlier_password}",
     ).create(2)
-    client.cookies.set("what2build_session", earlier_token)
+    client.cookies.set("buildable_session", earlier_token)
     assert client.get("/api/auth/session").status_code == 401
 
 
@@ -272,7 +276,7 @@ def test_password_reset_repairs_corrupt_revision_without_recycling_old_cookie(
 ) -> None:
     password_store.set_password("old-password", revision=1)
     client.post("/api/auth/login", json={"password": "old-password"})
-    revision_one_cookie = client.cookies.get("what2build_session")
+    revision_one_cookie = client.cookies.get("buildable_session")
     with session_factory.begin() as session:
         revision_setting = session.get_one(AppSetting, "auth.revision")
         if corrupt_revision is None:
@@ -286,7 +290,7 @@ def test_password_reset_repairs_corrupt_revision_without_recycling_old_cookie(
         )
 
     assert repaired_revision > 1
-    client.cookies.set("what2build_session", revision_one_cookie)
+    client.cookies.set("buildable_session", revision_one_cookie)
     assert client.get("/api/auth/session").status_code == 401
 
 
@@ -303,7 +307,7 @@ def test_password_reset_invalidates_cookie_when_repair_reuses_high_revision(
     )
     assert login_response.status_code == 204
     assert client.get("/api/auth/session").status_code == 200
-    old_cookie = client.cookies.get("what2build_session")
+    old_cookie = client.cookies.get("buildable_session")
     with session_factory.begin() as session:
         session.get_one(AppSetting, "auth.revision").value = "malformed"
     monkeypatch.setattr(auth_service, "randbits", lambda _bits: high_revision)
@@ -314,7 +318,7 @@ def test_password_reset_invalidates_cookie_when_repair_reuses_high_revision(
         )
 
     assert repaired_revision == high_revision
-    client.cookies.set("what2build_session", old_cookie)
+    client.cookies.set("buildable_session", old_cookie)
     assert client.get("/api/auth/session").status_code == 401
 
 
@@ -325,7 +329,7 @@ def test_password_change_invalidates_existing_session_and_authenticates_new_one(
 ) -> None:
     password_store.set_password("old-password")
     client.post("/api/auth/login", json={"password": "old-password"})
-    old_cookie = client.cookies.get("what2build_session")
+    old_cookie = client.cookies.get("buildable_session")
 
     response = client.post(
         "/api/auth/password",
@@ -338,7 +342,7 @@ def test_password_change_invalidates_existing_session_and_authenticates_new_one(
     assert response.status_code == 204
     assert client.get("/api/auth/session").json() == {"authenticated": True}
     with TestClient(app) as stale_client:
-        stale_client.cookies.set("what2build_session", old_cookie)
+        stale_client.cookies.set("buildable_session", old_cookie)
         assert stale_client.get("/api/auth/session").status_code == 401
         assert stale_client.post(
             "/api/auth/login", json={"password": "old-password"}

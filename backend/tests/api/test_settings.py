@@ -27,7 +27,7 @@ def test_backup_routes_export_validate_import_and_write_safety_copy(
     assert client.post("/api/auth/login", json={"password": "build-stuff"}).status_code == 204
     exported = client.get("/api/backups/export")
     assert exported.status_code == 200
-    assert exported.headers["content-disposition"].startswith('attachment; filename="what2build-backup-')
+    assert exported.headers["content-disposition"].startswith('attachment; filename="buildable-backup-')
     assert exported.headers["content-disposition"].endswith('.json"')
     payload = exported.json()
     payload["owned_sets"] = [{"set_num": "1000-1", "quantity": 1, "completeness": "complete", "unknown_missing_count": 0, "unknown_missing_note": None, "notes": None}]
@@ -58,7 +58,7 @@ def test_status_reports_operational_metadata(
     assert body["catalog_counts"]["sets"] == 1
     assert body["last_successful_import"] is not None
     assert body["latest_failed_import"] is not None
-    assert body["backup_schema"] == "what2build.backup/v1"
+    assert body["backup_schema"] == "buildable.backup/v1"
 
 
 def test_replace_aborts_when_safety_backup_cannot_be_written(
@@ -78,7 +78,7 @@ def test_replace_aborts_when_safety_backup_cannot_be_written(
         raise OSError("read only")
 
     monkeypatch.setattr(backups_api, "write_backup_json", fail_write)  # type: ignore[attr-defined]
-    payload = {"schema": "what2build.backup/v1", "exported_at": "2026-08-10T12:00:00Z", "owned_sets": [{"set_num": "1000-1", "quantity": 1, "completeness": "complete", "unknown_missing_count": 0, "unknown_missing_note": None, "notes": None}], "missing_parts": [], "set_overrides": [], "set_part_overrides": [], "equivalence_groups": [], "settings": {}}
+    payload = {"schema": "buildable.backup/v1", "exported_at": "2026-08-10T12:00:00Z", "owned_sets": [{"set_num": "1000-1", "quantity": 1, "completeness": "complete", "unknown_missing_count": 0, "unknown_missing_note": None, "notes": None}], "missing_parts": [], "set_overrides": [], "set_part_overrides": [], "equivalence_groups": [], "settings": {}}
     assert client.post("/api/backups/import?mode=replace&confirm=true", json=payload).status_code == 500
 
 
@@ -98,7 +98,7 @@ def test_replace_rejects_reserved_setting_before_writing_safety_copy(
         raise AssertionError("safety backup should not be written")
 
     monkeypatch.setattr(backups_api, "write_backup_json", unexpected_write)  # type: ignore[attr-defined]
-    payload = {"schema": "what2build.backup/v1", "exported_at": "2026-08-10T12:00:00Z", "owned_sets": [], "missing_parts": [], "set_overrides": [], "set_part_overrides": [], "equivalence_groups": [], "settings": {"auth.password_hash": "malicious"}}
+    payload = {"schema": "buildable.backup/v1", "exported_at": "2026-08-10T12:00:00Z", "owned_sets": [], "missing_parts": [], "set_overrides": [], "set_part_overrides": [], "equivalence_groups": [], "settings": {"auth.password_hash": "malicious"}}
     response = client.post("/api/backups/import?mode=replace&confirm=true", json=payload)
     assert response.status_code == 422
     assert response.json()["detail"]["code"] == "reserved_setting_key"
