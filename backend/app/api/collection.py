@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -9,12 +9,17 @@ from app.db import get_session
 from app.models import OwnedSet, OwnedSetMissingPart
 from app.repositories.catalog import CatalogRepository
 from app.schemas.collection import (
+    CollectionImportSummary,
     MissingPartCreate,
     MissingPartResponse,
     MissingPartUpdate,
     OwnedSetCreate,
     OwnedSetResponse,
     OwnedSetUpdate,
+)
+from app.services.collection_import import (
+    CollectionImportError,
+    import_rebrickable_collection_csv,
 )
 
 router = APIRouter(
@@ -141,6 +146,17 @@ def add_set(
     session.commit()
     session.refresh(owned)
     return _response(session, owned)
+
+
+@router.post("/import", response_model=CollectionImportSummary)
+def import_collection(
+    file: Annotated[UploadFile, File()],
+    session: Annotated[Session, Depends(get_session)],
+) -> CollectionImportSummary:
+    try:
+        return import_rebrickable_collection_csv(file.file, session)
+    except CollectionImportError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
 
 
 @router.patch("/{owned_set_id}", response_model=OwnedSetResponse)

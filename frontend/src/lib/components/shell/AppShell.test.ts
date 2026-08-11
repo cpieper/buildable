@@ -23,6 +23,11 @@ describe('AppShell', () => {
 		});
 
 		expect(screen.getByRole('navigation', { name: 'Primary' })).toBeInTheDocument();
+		expect(
+			within(screen.getByRole('link', { name: 'Buildable home' })).getByRole('img', {
+				name: 'Buildable'
+			})
+		).toHaveAttribute('src', expect.stringContaining('buildable-logo.png'));
 		expect(within(screen.getByRole('navigation', { name: 'Primary' })).getByRole('link', { name: 'Inventory' })).toHaveAttribute('aria-current', 'page');
 	});
 

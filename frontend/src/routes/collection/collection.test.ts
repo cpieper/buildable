@@ -35,6 +35,28 @@ describe('collection page', () => {
 		expect(await screen.findByText('2 known missing')).toBeInTheDocument();
 	});
 
+	it('imports a Rebrickable collection CSV and reports skipped catalog misses', async () => {
+		let uploaded = false;
+		vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+			const url = String(input); const method = init?.method ?? 'GET';
+			if (url === '/api/collection' && method === 'GET') return json(uploaded ? [owned] : []);
+			if (url === '/api/collection/import' && method === 'POST') {
+				uploaded = init?.body instanceof FormData;
+				return json({ rows_imported: 1, quantity_added: 2, rows_skipped: 1, missing_set_nums: ['9999-1'], warnings: ['9999-1 is not in the local catalog.'] });
+			}
+			if (url === '/api/catalog/sets/10497-1') return json({ ...owned, year: 2022, theme_name: 'Space', num_parts: 1254, image_url: null, external_url: null, instructions_url: null, parts: [] });
+			return json({ detail: `Unhandled ${method} ${url}` }, 500);
+		});
+
+		render(CollectionPage);
+		const file = new File(['Set Number,Quantity,Inventory Ver\n10497-1,2,1\n9999-1,1,1\n'], 'sets.csv', { type: 'text/csv' });
+		await fireEvent.change(await screen.findByLabelText('Collection CSV'), { target: { files: [file] } });
+
+		expect(uploaded).toBe(true);
+		expect(await screen.findByText('Imported 1 set row adding 2 copies.')).toBeInTheDocument();
+		expect(screen.getByText('Skipped 1 row missing from the catalog: 9999-1')).toBeInTheDocument();
+	});
+
 	it('collects add details and imports a selected remote result before saving it', async () => {
 		let remoteImported = false;
 		vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {

@@ -55,3 +55,11 @@ class OwnedSetResponse(BaseModel):
     has_local_overrides: bool
     added_at: datetime
     updated_at: datetime
+
+
+class CollectionImportSummary(BaseModel):
+    rows_imported: int
+    quantity_added: int
+    rows_skipped: int
+    missing_set_nums: list[str]
+    warnings: list[str]
