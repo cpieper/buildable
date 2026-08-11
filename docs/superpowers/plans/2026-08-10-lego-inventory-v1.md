@@ -90,7 +90,7 @@ Run:
 ```bash
 mkdir -p backend/app backend/tests
 cd backend
-uv init --lib --name what2build-api --python '>=3.11'
+uv init --lib --name buildable-api --python '>=3.11'
 uv add 'fastapi[standard]' 'pydantic-settings>=2,<3' 'sqlalchemy>=2,<3' 'alembic>=1.16,<2' 'httpx>=0.28,<1' 'pwdlib[argon2]>=0.3,<1' 'itsdangerous>=2.2,<3' 'python-multipart>=0.0.20,<1'
 uv add --dev 'pytest>=8,<10' 'pytest-cov>=6,<8' 'ruff>=0.12,<1'
 cd ..
@@ -149,14 +149,14 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    database_url: str = "sqlite:///./data/what2build.db"
+    database_url: str = "sqlite:///./data/buildable.db"
     data_dir: Path = Path("./data")
     frontend_dir: Path | None = None
     session_secret: str = "development-only-change-me"
     secure_cookies: bool = False
     rebrickable_api_key: str | None = None
 
-    model_config = SettingsConfigDict(env_prefix="WHAT2BUILD_", env_file=".env")
+    model_config = SettingsConfigDict(env_prefix="BUILDABLE_", env_file=".env")
 
 
 @lru_cache
@@ -170,7 +170,7 @@ from fastapi import FastAPI
 
 
 def create_app() -> FastAPI:
-    app = FastAPI(title="What2Build", version="0.1.0")
+    app = FastAPI(title="Buildable", version="0.1.0")
 
     @app.get("/api/health", tags=["system"])
     def health() -> dict[str, str]:
@@ -384,7 +384,7 @@ git commit -m "feat: add catalog and collection persistence model"
 
 **Interfaces:**
 - Consumes: `AppSetting`, `get_session()`, `Settings.session_secret`, `Settings.secure_cookies`.
-- Produces: `POST /api/auth/login`, `POST /api/auth/logout`, `GET /api/auth/session`, `POST /api/auth/password`; `require_auth(request, session) -> None`; CLI `what2build reset-password`.
+- Produces: `POST /api/auth/login`, `POST /api/auth/logout`, `GET /api/auth/session`, `POST /api/auth/password`; `require_auth(request, session) -> None`; CLI `buildable reset-password`.
 
 - [ ] **Step 1: Write failing API tests for login, session protection, logout, and revision invalidation**
 
@@ -395,7 +395,7 @@ def test_login_sets_http_only_session_cookie(client, password_store):
     response = client.post("/api/auth/login", json={"password": "build-stuff"})
 
     assert response.status_code == 204
-    assert "what2build_session=" in response.headers["set-cookie"]
+    assert "buildable_session=" in response.headers["set-cookie"]
     assert "HttpOnly" in response.headers["set-cookie"]
     assert client.get("/api/auth/session").json() == {"authenticated": True}
 
@@ -403,14 +403,14 @@ def test_login_sets_http_only_session_cookie(client, password_store):
 def test_password_change_invalidates_existing_session(client, password_store):
     password_store.set_password("old-password")
     client.post("/api/auth/login", json={"password": "old-password"})
-    old_cookie = client.cookies.get("what2build_session")
+    old_cookie = client.cookies.get("buildable_session")
 
     response = client.post("/api/auth/password", json={
         "current_password": "old-password", "new_password": "new-password"
     })
 
     assert response.status_code == 204
-    client.cookies.set("what2build_session", old_cookie)
+    client.cookies.set("buildable_session", old_cookie)
     assert client.get("/api/auth/session").status_code == 401
 ```
 
@@ -428,7 +428,7 @@ Cookie requirements:
 
 ```python
 response.set_cookie(
-    "what2build_session",
+    "buildable_session",
     token,
     httponly=True,
     secure=settings.secure_cookies,
@@ -440,7 +440,7 @@ response.set_cookie(
 
 Password change and CLI reset must increment `auth.revision`. Login errors always return `401 {"detail":"Invalid password"}`.
 
-Register `[project.scripts] what2build = "app.cli:main"` in `pyproject.toml`; the CLI opens the configured database through the same settings/session factory as the web app.
+Register `[project.scripts] buildable = "app.cli:main"` in `pyproject.toml`; the CLI opens the configured database through the same settings/session factory as the web app.
 
 - [ ] **Step 4: Register the auth router and protect a probe route in tests**
 
@@ -1054,7 +1054,7 @@ git commit -m "feat: layer local corrections and part equivalences"
 
 **Interfaces:**
 - Consumes: collection, missing, override, equivalence, app-setting, and sync-run models.
-- Produces: `export_backup(session) -> BackupV1`, `restore_backup(session, backup, mode) -> RestoreSummary`; backup export/import routes; settings status route; CLI `what2build export-backup PATH`.
+- Produces: `export_backup(session) -> BackupV1`, `restore_backup(session, backup, mode) -> RestoreSummary`; backup export/import routes; settings status route; CLI `buildable export-backup PATH`.
 
 - [ ] **Step 1: Write failing backup round-trip and secret-exclusion tests**
 
@@ -1094,13 +1094,13 @@ Run: `cd backend && uv run pytest tests/services/test_backup.py -v`
 
 Expected: FAIL because backup services do not exist.
 
-- [ ] **Step 3: Define and implement `what2build.backup/v1`**
+- [ ] **Step 3: Define and implement `buildable.backup/v1`**
 
 Top-level JSON fields are exactly:
 
 ```json
 {
-  "schema": "what2build.backup/v1",
+  "schema": "buildable.backup/v1",
   "exported_at": "2026-08-10T12:00:00Z",
   "owned_sets": [],
   "missing_parts": [],
@@ -1126,7 +1126,7 @@ GET  /api/settings/status
 
 Before replace, write a timestamped safety JSON file beneath `${data_dir}/backups/`; if that write fails, abort the restore. Return the safety-backup filename in `RestoreSummary`. `GET /api/settings/status` returns API-key configured boolean, last successful import, latest failed import, catalog counts, database path label (not absolute secret-bearing path), and current backup schema.
 
-Add `what2build export-backup PATH`, which refuses to overwrite an existing file, creates missing parent directories for the explicit path, writes UTF-8 JSON atomically, and prints only the final path and exported record counts.
+Add `buildable export-backup PATH`, which refuses to overwrite an existing file, creates missing parent directories for the explicit path, writes UTF-8 JSON atomically, and prints only the final path and exported record counts.
 
 - [ ] **Step 5: Run backup/settings and full backend tests**
 
@@ -1203,7 +1203,7 @@ Navigation labels are Collection, Inventory, Buildable Sets, and Settings using 
 
 - [ ] **Step 5: Implement unlock behavior and route guard**
 
-Show a compact branded `What2Build` wordmark, one password field, Unlock button, and inline error. Preserve `next` only when it is a local path beginning with `/`. The root route redirects authenticated users to `/buildable` and unauthenticated users to `/unlock`.
+Show a compact branded `Buildable` wordmark, one password field, Unlock button, and inline error. Preserve `next` only when it is a local path beginning with `/`. The root route redirects authenticated users to `/buildable` and unauthenticated users to `/unlock`.
 
 - [ ] **Step 6: Run shell tests, type checks, and responsive component inspection**
 
@@ -1409,7 +1409,7 @@ git commit -m "feat: add buildable discovery and match detail screens"
 ```typescript
 it('validates a restore before enabling replace', async () => {
   render(SettingsPage);
-  const file = new File([validBackupJson], 'what2build-backup.json', { type: 'application/json' });
+  const file = new File([validBackupJson], 'buildable-backup.json', { type: 'application/json' });
 
   await userEvent.upload(screen.getByLabelText('Backup file'), file);
   expect(await screen.findByText('2 owned sets, 1 equivalence group')).toBeInTheDocument();
@@ -1540,16 +1540,16 @@ COPY backend/app ./app
 COPY backend/migrations ./migrations
 COPY backend/alembic.ini ./alembic.ini
 COPY --from=frontend /src/frontend/build ./static
-ENV PATH="/app/.venv/bin:$PATH" WHAT2BUILD_DATA_DIR=/data WHAT2BUILD_FRONTEND_DIR=/app/static
+ENV PATH="/app/.venv/bin:$PATH" BUILDABLE_DATA_DIR=/data BUILDABLE_FRONTEND_DIR=/app/static
 EXPOSE 8000
 CMD ["fastapi", "run", "app/main.py", "--host", "0.0.0.0", "--port", "8000"]
 ```
 
-`compose.yaml` builds the image, maps `${WHAT2BUILD_PORT:-8000}:8000`, mounts `./data:/data`, sets `WHAT2BUILD_DATABASE_URL=sqlite:////data/what2build.db`, requires `${WHAT2BUILD_SESSION_SECRET:?set WHAT2BUILD_SESSION_SECRET}`, loads `.env`, restarts unless stopped, and health-checks `/api/health`. `.env.example` contains generated-value instructions for `WHAT2BUILD_SESSION_SECRET`, bootstrap `WHAT2BUILD_INITIAL_PASSWORD`, optional `WHAT2BUILD_REBRICKABLE_API_KEY`, `WHAT2BUILD_SECURE_COOKIES=false`, and port.
+`compose.yaml` builds the image, maps `${BUILDABLE_PORT:-8000}:8000`, mounts `./data:/data`, sets `BUILDABLE_DATABASE_URL=sqlite:////data/buildable.db`, requires `${BUILDABLE_SESSION_SECRET:?set BUILDABLE_SESSION_SECRET}`, loads `.env`, restarts unless stopped, and health-checks `/api/health`. `.env.example` contains generated-value instructions for `BUILDABLE_SESSION_SECRET`, bootstrap `BUILDABLE_INITIAL_PASSWORD`, optional `BUILDABLE_REBRICKABLE_API_KEY`, `BUILDABLE_SECURE_COOKIES=false`, and port.
 
 - [ ] **Step 5: Add first-run password bootstrap and reset script**
 
-On startup, if no password hash exists, require `WHAT2BUILD_INITIAL_PASSWORD`, hash it once, persist it, and never log it. If neither persisted hash nor initial password exists, fail startup with a clear message. Add `what2build reset-password --stdin`, which reads and confirms two lines from standard input. `scripts/reset-password.sh` prompts silently twice, rejects mismatches locally, and pipes the confirmed value to `docker compose exec -T app what2build reset-password --stdin`; it never puts the password in shell history or process arguments.
+On startup, if no password hash exists, require `BUILDABLE_INITIAL_PASSWORD`, hash it once, persist it, and never log it. If neither persisted hash nor initial password exists, fail startup with a clear message. Add `buildable reset-password --stdin`, which reads and confirms two lines from standard input. `scripts/reset-password.sh` prompts silently twice, rejects mismatches locally, and pipes the confirmed value to `docker compose exec -T app buildable reset-password --stdin`; it never puts the password in shell history or process arguments.
 
 - [ ] **Step 6: Write operational documentation**
 
@@ -1562,7 +1562,7 @@ make check
 docker compose up --build -d
 docker compose logs -f app
 ./scripts/reset-password.sh
-docker compose exec app what2build export-backup /data/backups/manual.json
+docker compose exec app buildable export-backup /data/backups/manual.json
 ```
 
 Document macOS prerequisites, 64-bit Raspberry Pi OS/Debian 12+, LAN URL, data directory ownership, API-key setup, ZIP import contents, manual import, backup/restore, upgrade procedure (`docker compose build && docker compose up -d`), and recovery by restoring the `data/` directory. For JSON-only recovery, explicitly import the catalog first and then restore personal data. Include the Future Work document link.
