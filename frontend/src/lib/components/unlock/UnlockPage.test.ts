@@ -12,6 +12,10 @@ describe('unlock page', () => {
 	it('brands the unlock page as Buildable', () => {
 		render(UnlockPage);
 		expect(screen.getByRole('link', { name: 'Buildable' })).toBeInTheDocument();
+		expect(screen.getByRole('img', { name: 'Buildable logo' })).toHaveAttribute(
+			'src',
+			expect.stringContaining('buildable-logo.png')
+		);
 	});
 	it('submits the shared password as JSON and follows a safe next path', async () => {
 		const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null, { status: 204 })); render(UnlockPage);

@@ -132,6 +132,56 @@ def test_collection_crud_duplicate_increment_missing_limits_and_cascade(
     )
 
 
+def test_rebrickable_collection_csv_import_merges_cached_sets_and_reports_skips(
+    authenticated_client: TestClient,
+) -> None:
+    _catalog(authenticated_client)
+    assert (
+        authenticated_client.post(
+            "/api/collection", json={"set_num": "1234-1", "quantity": 1}
+        ).json()["quantity"]
+        == 1
+    )
+
+    response = authenticated_client.post(
+        "/api/collection/import",
+        files={
+            "file": (
+                "sets.csv",
+                (
+                    "Set Number,Quantity,Inventory Ver\n"
+                    "1234-1,2,1\n"
+                    "9999-1,3,1\n"
+                ),
+                "text/csv",
+            )
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "rows_imported": 1,
+        "quantity_added": 2,
+        "rows_skipped": 1,
+        "missing_set_nums": ["9999-1"],
+        "warnings": ["9999-1 is not in the local catalog."],
+    }
+    collection = authenticated_client.get("/api/collection").json()
+    assert [(row["set_num"], row["quantity"]) for row in collection] == [("1234-1", 3)]
+
+
+def test_rebrickable_collection_csv_import_rejects_missing_required_columns(
+    authenticated_client: TestClient,
+) -> None:
+    response = authenticated_client.post(
+        "/api/collection/import",
+        files={"file": ("sets.csv", "Set Number,Inventory Ver\n1234-1,1\n", "text/csv")},
+    )
+
+    assert response.status_code == 422
+    assert "missing required columns: Quantity" in response.json()["detail"]
+
+
 def test_inventory_search_color_pagination_and_warnings(
     authenticated_client: TestClient,
 ) -> None:
