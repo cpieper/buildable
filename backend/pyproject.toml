@@ -1,0 +1,40 @@
+[project]
+name = "what2build-api"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "cpieper", email = "pieper.chris@icloud.com" }
+]
+requires-python = ">=3.11"
+dependencies = [
+    "alembic>=1.16,<2",
+    "fastapi[standard]>=0.141.1",
+    "httpx>=0.28,<1",
+    "itsdangerous>=2.2,<3",
+    "pwdlib[argon2]>=0.3,<1",
+    "pydantic-settings>=2,<3",
+    "python-multipart>=0.0.20,<1",
+    "sqlalchemy>=2,<3",
+]
+
+[project.scripts]
+what2build = "app.cli:main"
+
+[build-system]
+requires = ["uv_build>=0.10.3,<0.11.0"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-root = ""
+module-name = "app"
+
+[dependency-groups]
+dev = [
+    "pytest>=8,<10",
+    "pytest-cov>=6,<8",
+    "ruff>=0.12,<1",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]

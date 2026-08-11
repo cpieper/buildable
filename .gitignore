@@ -1,2 +1,12 @@
 .superpowers/
 .worktrees/
+backend/data/
+.env
+.venv/
+node_modules/
+frontend/build/
+frontend/test-results/
+frontend/playwright-report/
+task-15-report.md
+.pytest_cache/
+__pycache__/
