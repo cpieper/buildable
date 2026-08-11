@@ -14,7 +14,7 @@ from app.models import AppSetting, utc_now
 
 PASSWORD_HASH_KEY = "auth.password_hash"
 REVISION_KEY = "auth.revision"
-SESSION_COOKIE_NAME = "what2build_session"
+SESSION_COOKIE_NAME = "buildable_session"
 SESSION_MAX_AGE = 60 * 60 * 24 * 30
 SQLITE_MAX_INTEGER = (1 << 63) - 1
 

@@ -41,12 +41,12 @@ def create_app(
                     if not app_settings.initial_password:
                         raise RuntimeError(
                             "No shared password is configured. Set "
-                            "WHAT2BUILD_INITIAL_PASSWORD before first startup."
+                            "BUILDABLE_INITIAL_PASSWORD before first startup."
                         )
                     password_store.set_password(app_settings.initial_password)
         yield
 
-    app = FastAPI(title="What2Build", version="0.1.0", lifespan=lifespan)
+    app = FastAPI(title="Buildable", version="0.1.0", lifespan=lifespan)
     app.state.settings = app_settings
     if session_factory is not None:
 

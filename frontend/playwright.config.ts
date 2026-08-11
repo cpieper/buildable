@@ -1,6 +1,6 @@
 import { defineConfig, devices } from '@playwright/test';
 
-const databasePath = '/tmp/what2build-playwright.db';
+const databasePath = '/tmp/buildable-playwright.db';
 
 export default defineConfig({
 	testDir: './e2e',
@@ -18,7 +18,7 @@ export default defineConfig({
 		{ name: 'mobile', testMatch: /mobile\.spec\.ts/, use: { ...devices['iPhone 13'], browserName: 'chromium', viewport: { width: 390, height: 844 } } }
 	],
 	webServer: {
-		command: `rm -f ${databasePath} ${databasePath}-shm ${databasePath}-wal && npm run build && cd ../backend && WHAT2BUILD_DATABASE_URL=sqlite:////tmp/what2build-playwright.db WHAT2BUILD_DATA_DIR=/tmp/what2build-playwright-data WHAT2BUILD_FRONTEND_DIR=../frontend/build WHAT2BUILD_INITIAL_PASSWORD=build-stuff WHAT2BUILD_SESSION_SECRET=playwright-session-secret uv run fastapi run app/main.py --host 127.0.0.1 --port 8000`,
+		command: `rm -f ${databasePath} ${databasePath}-shm ${databasePath}-wal && npm run build && cd ../backend && BUILDABLE_DATABASE_URL=sqlite:////tmp/buildable-playwright.db BUILDABLE_DATA_DIR=/tmp/buildable-playwright-data BUILDABLE_FRONTEND_DIR=../frontend/build BUILDABLE_INITIAL_PASSWORD=build-stuff BUILDABLE_SESSION_SECRET=playwright-session-secret uv run fastapi run app/main.py --host 127.0.0.1 --port 8000`,
 		url: 'http://127.0.0.1:8000/api/health',
 		reuseExistingServer: false,
 		timeout: 120_000

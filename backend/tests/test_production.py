@@ -15,7 +15,7 @@ def test_static_spa_fallback_keeps_api_404s_as_json(
     static_dir = tmp_path / "static"
     app_dir = static_dir / "_app"
     app_dir.mkdir(parents=True)
-    (static_dir / "index.html").write_text("<main>What2Build</main>")
+    (static_dir / "index.html").write_text("<main>Buildable</main>")
     (app_dir / "app.js").write_text("console.log('app')")
     app = create_app(
         settings=Settings(
@@ -34,7 +34,7 @@ def test_static_spa_fallback_keeps_api_404s_as_json(
     assert asset.status_code == 200
     assert asset.headers["cache-control"] == "public, max-age=31536000, immutable"
     assert page.status_code == 200
-    assert page.text == "<main>What2Build</main>"
+    assert page.text == "<main>Buildable</main>"
     assert page.headers["cache-control"] == "no-cache"
     assert api.status_code == 404
     assert api.headers["content-type"].startswith("application/json")

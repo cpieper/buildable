@@ -28,7 +28,7 @@ from app.schemas.backup import (
     SetPartOverrideBackup,
 )
 
-BACKUP_SCHEMA = "what2build.backup/v1"
+BACKUP_SCHEMA = "buildable.backup/v1"
 RESERVED_SETTING_KEYS = frozenset(
     {
         "auth.password_hash",

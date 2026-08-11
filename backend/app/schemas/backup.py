@@ -57,7 +57,7 @@ class BackupV1(BaseModel):
         validate_by_name=True,
     )
 
-    schema_name: str = Field(default="what2build.backup/v1", alias="schema")
+    schema_name: str = Field(default="buildable.backup/v1", alias="schema")
     exported_at: datetime
     owned_sets: list[OwnedSetBackup] = Field(default_factory=list)
     missing_parts: list[MissingPartBackup] = Field(default_factory=list)

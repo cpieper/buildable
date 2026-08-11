@@ -1,6 +1,6 @@
-# sv
+# Buildable frontend
 
-Everything you need to build a Svelte project, powered by [`sv`](https://github.com/sveltejs/cli).
+The Buildable web interface is powered by [`sv`](https://github.com/sveltejs/cli).
 
 ## Creating a project
 

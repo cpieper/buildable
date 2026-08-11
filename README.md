@@ -1,6 +1,6 @@
-# What2Build
+# Buildable
 
-What2Build is a local-first LEGO collection and buildability app. It combines the pieces in your owned official sets, accounts for known missing pieces, and explains which cached sets you can build—including color swaps.
+Buildable is a local-first LEGO collection and buildability app. It combines the pieces in your owned official sets, accounts for known missing pieces, and explains which cached sets you can build—including color swaps.
 
 ## Development on macOS
 
@@ -22,7 +22,7 @@ make check
 
 ## Catalog setup
 
-Set `WHAT2BUILD_REBRICKABLE_API_KEY` in a local `.env` to enable targeted Rebrickable lookups. Without a key, use **Settings** to import a Rebrickable ZIP: it must contain the catalog CSV files for sets, parts, colors, and set inventory. Settings also supports manual set entry for small catalogs or corrections.
+Set `BUILDABLE_REBRICKABLE_API_KEY` in a local `.env` to enable targeted Rebrickable lookups. Without a key, use **Settings** to import a Rebrickable ZIP: it must contain the catalog CSV files for sets, parts, colors, and set inventory. Settings also supports manual set entry for small catalogs or corrections.
 
 ## Raspberry Pi / Debian deployment
 
@@ -35,7 +35,7 @@ docker compose up --build -d
 docker compose logs -f app
 ```
 
-The app listens on `http://<pi-lan-ip>:8000` by default; change `WHAT2BUILD_PORT` in `.env` if required. The account that runs Docker must be able to read and write `./data`; it holds the SQLite database and backups. `WHAT2BUILD_INITIAL_PASSWORD` is used only when no password hash exists, so remove it from `.env` after the first successful boot if desired. Set `WHAT2BUILD_SECURE_COOKIES=true` when the LAN service is protected by HTTPS.
+The app listens on `http://<pi-lan-ip>:8000` by default; change `BUILDABLE_PORT` in `.env` if required. The account that runs Docker must be able to read and write `./data`; it holds the SQLite database and backups. `BUILDABLE_INITIAL_PASSWORD` is used only when no password hash exists, so remove it from `.env` after the first successful boot if desired. Set `BUILDABLE_SECURE_COOKIES=true` when the LAN service is protected by HTTPS.
 
 To upgrade while preserving data:
 
@@ -55,7 +55,7 @@ Reset a forgotten shared password without exposing it in shell history or proces
 Create an additional JSON backup with:
 
 ```bash
-docker compose exec app what2build export-backup /data/backups/manual.json
+docker compose exec app buildable export-backup /data/backups/manual.json
 ```
 
 Back up the complete `data/` directory before upgrades. Full recovery is: stop the service, restore `data/`, then start Compose again. A JSON backup contains personal collection data and local rules, not the catalog cache or secrets. For JSON-only recovery, first import the catalog again in Settings, then restore the personal-data backup from Settings.

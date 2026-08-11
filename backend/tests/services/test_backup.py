@@ -84,7 +84,7 @@ def test_backup_excludes_secrets(session: Session) -> None:
 
 def test_restore_rejects_unsupported_schema_and_dangling_dependencies_before_writes(session: Session) -> None:
     seed_catalog(session)
-    unsupported = BackupV1.model_construct(schema_name="what2build.backup/v2")
+    unsupported = BackupV1.model_construct(schema_name="buildable.backup/v2")
     try:
         restore_backup(session, unsupported, mode="replace")
     except BackupValidationError as error:
@@ -92,7 +92,7 @@ def test_restore_rejects_unsupported_schema_and_dangling_dependencies_before_wri
     else:
         raise AssertionError("unsupported schema was accepted")
 
-    dangling = BackupV1.model_validate({"schema": "what2build.backup/v1", "exported_at": "2026-08-10T12:00:00Z", "owned_sets": [{"set_num": "missing-1", "quantity": 1, "completeness": "complete", "unknown_missing_count": 0, "unknown_missing_note": None, "notes": None, "missing_parts": []}], "missing_parts": [], "set_overrides": [], "set_part_overrides": [], "equivalence_groups": [], "settings": {}})
+    dangling = BackupV1.model_validate({"schema": "buildable.backup/v1", "exported_at": "2026-08-10T12:00:00Z", "owned_sets": [{"set_num": "missing-1", "quantity": 1, "completeness": "complete", "unknown_missing_count": 0, "unknown_missing_note": None, "notes": None, "missing_parts": []}], "missing_parts": [], "set_overrides": [], "set_part_overrides": [], "equivalence_groups": [], "settings": {}})
     try:
         restore_backup(session, dangling, mode="replace")
     except BackupValidationError as error:
@@ -125,7 +125,7 @@ def test_restore_rejects_reserved_secret_setting_keys_before_mutation(
     if existing_secret:
         session.add(AppSetting(key=key, value="existing", secret=True))
     session.commit()
-    backup = BackupV1.model_validate({"schema": "what2build.backup/v1", "exported_at": "2026-08-10T12:00:00Z", "owned_sets": [], "missing_parts": [], "set_overrides": [], "set_part_overrides": [], "equivalence_groups": [], "settings": {key: "malicious"}})
+    backup = BackupV1.model_validate({"schema": "buildable.backup/v1", "exported_at": "2026-08-10T12:00:00Z", "owned_sets": [], "missing_parts": [], "set_overrides": [], "set_part_overrides": [], "equivalence_groups": [], "settings": {key: "malicious"}})
 
     with pytest.raises(BackupValidationError, match="reserved") as captured:
         restore_backup(session, backup, mode=mode)
@@ -144,7 +144,7 @@ def test_restore_rejects_reserved_secret_setting_keys_before_mutation(
 def test_backup_schema_alias_serializes_exact_v1_wire_field(session: Session) -> None:
     payload = export_backup(session).model_dump(mode="json")
 
-    assert payload["schema"] == "what2build.backup/v1"
+    assert payload["schema"] == "buildable.backup/v1"
     assert "schema_name" not in payload
 
 
@@ -158,7 +158,7 @@ def test_restore_rejects_destination_secret_setting_key_before_mutation(
         AppSetting(key="custom.secret", value="existing", secret=True),
     ])
     session.commit()
-    backup = BackupV1.model_validate({"schema": "what2build.backup/v1", "exported_at": "2026-08-10T12:00:00Z", "owned_sets": [], "missing_parts": [], "set_overrides": [], "set_part_overrides": [], "equivalence_groups": [], "settings": {"custom.secret": "malicious"}})
+    backup = BackupV1.model_validate({"schema": "buildable.backup/v1", "exported_at": "2026-08-10T12:00:00Z", "owned_sets": [], "missing_parts": [], "set_overrides": [], "set_part_overrides": [], "equivalence_groups": [], "settings": {"custom.secret": "malicious"}})
 
     with pytest.raises(BackupValidationError, match="secret") as captured:
         restore_backup(session, backup, mode=mode)
@@ -172,7 +172,7 @@ def test_merge_reports_conflicts_and_rejects_duplicate_natural_keys(session: Ses
     seed_catalog(session)
     session.add(OwnedSet(set_num="1000-1", quantity=1))
     session.commit()
-    conflict = BackupV1.model_validate({"schema": "what2build.backup/v1", "exported_at": "2026-08-10T12:00:00Z", "owned_sets": [{"set_num": "1000-1", "quantity": 2, "completeness": "complete", "unknown_missing_count": 0, "unknown_missing_note": None, "notes": None, "missing_parts": []}], "missing_parts": [], "set_overrides": [], "set_part_overrides": [], "equivalence_groups": [], "settings": {}})
+    conflict = BackupV1.model_validate({"schema": "buildable.backup/v1", "exported_at": "2026-08-10T12:00:00Z", "owned_sets": [{"set_num": "1000-1", "quantity": 2, "completeness": "complete", "unknown_missing_count": 0, "unknown_missing_note": None, "notes": None, "missing_parts": []}], "missing_parts": [], "set_overrides": [], "set_part_overrides": [], "equivalence_groups": [], "settings": {}})
     summary = restore_backup(session, conflict, mode="merge")
     assert summary.conflicting == 1
     assert session.scalar(select(OwnedSet.quantity)) == 1
@@ -193,8 +193,8 @@ def test_restore_rejects_invalid_or_overlapping_equivalence_groups_before_mutati
     seed_catalog(session)
     session.add(OwnedSet(set_num="1000-1", notes="keep"))
     session.commit()
-    singleton = BackupV1.model_validate({"schema": "what2build.backup/v1", "exported_at": "2026-08-10T12:00:00Z", "owned_sets": [], "missing_parts": [], "set_overrides": [], "set_part_overrides": [], "equivalence_groups": [{"name": "Only one", "part_nums": ["3001"]}], "settings": {}})
-    overlapping = BackupV1.model_validate({"schema": "what2build.backup/v1", "exported_at": "2026-08-10T12:00:00Z", "owned_sets": [], "missing_parts": [], "set_overrides": [], "set_part_overrides": [], "equivalence_groups": [{"name": "A-B", "part_nums": ["3001", "3002"]}, {"name": "A-C", "part_nums": ["3001", "3003"]}], "settings": {}})
+    singleton = BackupV1.model_validate({"schema": "buildable.backup/v1", "exported_at": "2026-08-10T12:00:00Z", "owned_sets": [], "missing_parts": [], "set_overrides": [], "set_part_overrides": [], "equivalence_groups": [{"name": "Only one", "part_nums": ["3001"]}], "settings": {}})
+    overlapping = BackupV1.model_validate({"schema": "buildable.backup/v1", "exported_at": "2026-08-10T12:00:00Z", "owned_sets": [], "missing_parts": [], "set_overrides": [], "set_part_overrides": [], "equivalence_groups": [{"name": "A-B", "part_nums": ["3001", "3002"]}, {"name": "A-C", "part_nums": ["3001", "3003"]}], "settings": {}})
 
     for backup, code in ((singleton, "invalid_equivalence_group"), (overlapping, "part_already_grouped")):
         with pytest.raises(BackupValidationError) as captured:
@@ -214,7 +214,7 @@ def test_merge_rejects_destination_equivalence_member_overlap_before_mutation(se
     ])
     session.add(OwnedSet(set_num="1000-1", notes="keep"))
     session.commit()
-    overlapping = BackupV1.model_validate({"schema": "what2build.backup/v1", "exported_at": "2026-08-10T12:00:00Z", "owned_sets": [], "missing_parts": [], "set_overrides": [], "set_part_overrides": [], "equivalence_groups": [{"name": "A-C", "part_nums": ["3001", "3003"]}], "settings": {}})
+    overlapping = BackupV1.model_validate({"schema": "buildable.backup/v1", "exported_at": "2026-08-10T12:00:00Z", "owned_sets": [], "missing_parts": [], "set_overrides": [], "set_part_overrides": [], "equivalence_groups": [{"name": "A-C", "part_nums": ["3001", "3003"]}], "settings": {}})
 
     with pytest.raises(BackupValidationError) as captured:
         restore_backup(session, overlapping, mode="merge")

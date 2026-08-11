@@ -13,4 +13,4 @@ if [[ "$password" != "$confirmation" ]]; then
   exit 1
 fi
 
-printf '%s\n%s\n' "$password" "$confirmation" | docker compose exec -T app what2build reset-password --stdin
+printf '%s\n%s\n' "$password" "$confirmation" | docker compose exec -T app buildable reset-password --stdin
