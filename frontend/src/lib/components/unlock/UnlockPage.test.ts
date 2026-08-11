@@ -8,6 +8,11 @@ vi.mock('$app/state', () => ({ page }));
 
 describe('unlock page', () => {
 	beforeEach(() => { goto.mockReset().mockResolvedValue(undefined); page.url = new URL('http://localhost/unlock?next=/inventory?sort=name'); });
+
+	it('brands the unlock page as Buildable', () => {
+		render(UnlockPage);
+		expect(screen.getByRole('link', { name: 'Buildable' })).toBeInTheDocument();
+	});
 	it('submits the shared password as JSON and follows a safe next path', async () => {
 		const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null, { status: 204 })); render(UnlockPage);
 		await fireEvent.input(screen.getByLabelText('Shared password'), { target: { value: 'build-stuff' } }); await fireEvent.click(screen.getByRole('button', { name: 'Unlock' }));

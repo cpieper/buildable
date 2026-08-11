@@ -19,8 +19,8 @@ COPY backend/alembic.ini ./alembic.ini
 COPY --from=frontend /src/frontend/build ./static
 
 ENV PATH="/app/.venv/bin:$PATH" \
-    WHAT2BUILD_DATA_DIR=/data \
-    WHAT2BUILD_FRONTEND_DIR=/app/static
+    BUILDABLE_DATA_DIR=/data \
+    BUILDABLE_FRONTEND_DIR=/app/static
 
 EXPOSE 8000
 CMD ["fastapi", "run", "app/main.py", "--host", "0.0.0.0", "--port", "8000"]
