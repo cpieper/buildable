@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="frontend/src/lib/assets/buildable-logo.png" alt="Buildable logo: colorful building bricks falling from a box" width="520">
+  <img src="frontend/src/lib/assets/buildable-logo.png" alt="Buildable logo: colorful building bricks falling from a box" width="320">
 </div>
 
 <h1 align="center">Buildable</h1>
