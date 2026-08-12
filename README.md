@@ -36,6 +36,8 @@ make check
 
 Set `BUILDABLE_REBRICKABLE_API_KEY` in a local `.env` to enable targeted Rebrickable lookups. Without a key, use **Settings** to import a Rebrickable ZIP: it must contain the catalog CSV files for sets, parts, colors, and set inventory. Settings also supports manual set entry for small catalogs or corrections.
 
+Catalog data is the pool of possible build targets, not your owned collection. For discovery, start with exact builds and color swaps, then include missing-piece matches to find near misses that may only need a small parts order.
+
 ## Raspberry Pi / Debian deployment
 
 Use 64-bit Raspberry Pi OS or Debian 12+ with Docker Engine and the Docker Compose plugin installed. Copy the sample environment file and replace both secret values before starting:

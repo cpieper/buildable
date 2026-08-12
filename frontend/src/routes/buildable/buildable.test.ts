@@ -58,6 +58,44 @@ const missing = { set_num: '40501-1', name: 'Missing Set', year: 2021, theme_nam
 		expect(screen.queryByText('Missing Set')).not.toBeInTheDocument();
 	});
 
+	it('includes owned sets by default and can exclude them with a top-level toggle', async () => {
+		const recommendationUrls: string[] = [];
+		vi.mocked(globalThis.fetch).mockImplementation(async (input) => {
+			const url = String(input);
+			if (url.startsWith('/api/recommendations')) {
+				recommendationUrls.push(url);
+				const hideOwned = new URL(url, 'http://localhost').searchParams.get('hide_owned') === 'true';
+				return json({ items: hideOwned ? [swaps] : [exact, swaps], total_candidates: hideOwned ? 1 : 2, offset: 0, limit: 50, max_pieces: 1000, theme: null, year_from: null, year_to: null, hide_owned: hideOwned, status: null, sort: 'buildability', direction: 'asc' });
+			}
+			if (url === '/api/settings/status') return json({ api_key_configured: false });
+			return json([]);
+		});
+
+		render(BuildablePage);
+		expect(await screen.findByRole('checkbox', { name: 'Include owned sets' })).toBeChecked();
+		expect(new URL(recommendationUrls.at(-1)!, 'http://localhost').searchParams.get('hide_owned')).toBe('false');
+		await fireEvent.click(screen.getByRole('checkbox', { name: 'Include owned sets' }));
+		await vi.waitFor(() => expect(new URL(recommendationUrls.at(-1)!, 'http://localhost').searchParams.get('hide_owned')).toBe('true'));
+		expect(window.location.search).toContain('include_owned=0');
+		expect(screen.queryByText('Galaxy Explorer')).not.toBeInTheDocument();
+	});
+
+	it('shows candidate-pool guidance when no buildable sets match', async () => {
+		vi.mocked(globalThis.fetch).mockImplementation(async (input) => {
+			const url = String(input);
+			if (url.startsWith('/api/recommendations')) return json({ items: [], total_candidates: 0, offset: 0, limit: 50, max_pieces: 1000, theme: null, year_from: null, year_to: null, hide_owned: false, status: null, sort: 'buildability', direction: 'asc' });
+			if (url === '/api/settings/status') return json({ api_key_configured: false });
+			return json([]);
+		});
+
+		render(BuildablePage);
+		expect(await screen.findByText('No sets match this view yet.')).toBeInTheDocument();
+		expect(screen.getByRole('link', { name: 'Import a Rebrickable catalog ZIP' })).toHaveAttribute('href', '/settings#catalog-import');
+		expect(screen.getByText(/Catalog imports add set references and inventories for matching/)).toBeInTheDocument();
+		expect(screen.getByText(/Start with exact builds and color swaps/)).toBeInTheDocument();
+		expect(screen.getByText(/Near misses are useful when a tiny parts order would unlock a set/)).toBeInTheDocument();
+	});
+
 	it('retries a failed remote import and only opens detail after the import succeeds', async () => {
 		let importAttempt = 0;
 		vi.mocked(globalThis.fetch).mockImplementation(async (input, init) => {
