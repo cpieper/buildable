@@ -1,4 +1,4 @@
-FROM node:22-bookworm-slim AS frontend
+FROM node:26-bookworm-slim AS frontend
 
 WORKDIR /src/frontend
 COPY frontend/package*.json ./
@@ -6,7 +6,7 @@ RUN npm ci
 COPY frontend/ ./
 RUN npm run build
 
-FROM python:3.12-slim-bookworm AS runtime
+FROM python:3.14-slim-bookworm AS runtime
 
 COPY --from=ghcr.io/astral-sh/uv:0.10.3 /uv /uvx /bin/
 WORKDIR /app
