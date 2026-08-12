@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/svelte';
+import { fireEvent, render, screen, within } from '@testing-library/svelte';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import CollectionPage from './+page.svelte';
 
@@ -55,6 +55,23 @@ describe('collection page', () => {
 		expect(uploaded).toBe(true);
 		expect(await screen.findByText('Imported 1 set row adding 2 copies.')).toBeInTheDocument();
 		expect(screen.getByText('Skipped 1 row missing from the catalog: 9999-1')).toBeInTheDocument();
+	});
+
+	it('opens a larger preview when a set thumbnail is clicked', async () => {
+		vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+			const url = String(input); const method = init?.method ?? 'GET';
+			if (url === '/api/collection' && method === 'GET') return json([owned]);
+			if (url === '/api/catalog/sets/10497-1') return json({ ...owned, year: 2022, theme_name: 'Space', num_parts: 1254, image_url: 'https://example.test/galaxy.png', external_url: null, instructions_url: null, parts: [] });
+			return json({ detail: `Unhandled ${method} ${url}` }, 500);
+		});
+
+		render(CollectionPage);
+		await fireEvent.click(await screen.findByRole('button', { name: 'Preview Galaxy Explorer image' }));
+
+		const dialog = await screen.findByRole('dialog', { name: 'Galaxy Explorer image preview' });
+		expect(within(dialog).getByRole('img', { name: 'Galaxy Explorer set preview' })).toHaveAttribute('src', 'https://example.test/galaxy.png');
+		await fireEvent.click(within(dialog).getByRole('button', { name: 'Close preview' }));
+		expect(screen.queryByRole('dialog', { name: 'Galaxy Explorer image preview' })).not.toBeInTheDocument();
 	});
 
 	it('collects add details and imports a selected remote result before saving it', async () => {
