@@ -1,4 +1,5 @@
 import csv
+from collections.abc import Callable
 from dataclasses import dataclass
 from io import TextIOWrapper
 from typing import BinaryIO
@@ -10,6 +11,12 @@ from sqlalchemy.orm import Session
 from app.models import OwnedSet
 from app.repositories.catalog import CatalogRepository
 from app.schemas.collection import CollectionImportSummary
+from app.services.catalog_import import CatalogImportError
+from app.services.rebrickable import (
+    CatalogLookupError,
+    ImportedSet,
+    import_rebrickable_set,
+)
 
 REBRICKABLE_COLLECTION_COLUMNS = {"Set Number", "Quantity"}
 
@@ -26,15 +33,19 @@ class CollectionCsvRow:
 
 
 def import_rebrickable_collection_csv(
-    stream: BinaryIO, session: Session
+    stream: BinaryIO,
+    session: Session,
+    *,
+    lookup_missing: Callable[[str], ImportedSet] | None = None,
 ) -> CollectionImportSummary:
     rows = _read_collection_rows(stream)
-    repository = CatalogRepository(session)
+    lookup_warnings = _import_missing_catalog_sets(rows, session, lookup_missing)
     imported = 0
     quantity_added = 0
     missing_set_nums: list[str] = []
 
     try:
+        repository = CatalogRepository(session)
         for row in rows:
             if repository.get_effective_set(row.set_num) is None:
                 missing_set_nums.append(row.set_num)
@@ -53,15 +64,45 @@ def import_rebrickable_collection_csv(
         raise CollectionImportError(f"collection import failed: {error}") from error
 
     unique_missing = sorted(set(missing_set_nums))
+    missing_warnings = [
+        lookup_warnings.get(set_num) or f"{set_num} is not in the local catalog."
+        for set_num in unique_missing
+    ]
     return CollectionImportSummary(
         rows_imported=imported,
         quantity_added=quantity_added,
         rows_skipped=len(missing_set_nums),
         missing_set_nums=unique_missing,
-        warnings=[
-            f"{set_num} is not in the local catalog." for set_num in unique_missing
-        ],
+        warnings=missing_warnings,
     )
+
+
+def _import_missing_catalog_sets(
+    rows: list[CollectionCsvRow],
+    session: Session,
+    lookup_missing: Callable[[str], ImportedSet] | None,
+) -> dict[str, str]:
+    repository = CatalogRepository(session)
+    missing = sorted(
+        {
+            row.set_num
+            for row in rows
+            if repository.get_effective_set(row.set_num) is None
+        }
+    )
+    if lookup_missing is None:
+        return {}
+
+    warnings: dict[str, str] = {}
+    for set_num in missing:
+        try:
+            import_rebrickable_set(lookup_missing(set_num), session)
+        except (CatalogImportError, CatalogLookupError) as error:
+            message = getattr(error, "message", str(error))
+            warnings[set_num] = (
+                f"{set_num} could not be imported from Rebrickable: {message}"
+            )
+    return warnings
 
 
 def _read_collection_rows(stream: BinaryIO) -> list[CollectionCsvRow]:

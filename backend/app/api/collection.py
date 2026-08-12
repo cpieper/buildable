@@ -4,7 +4,8 @@ from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.api.dependencies import require_auth
+from app.api.dependencies import get_request_settings, require_auth
+from app.config import Settings
 from app.db import get_session
 from app.models import OwnedSet, OwnedSetMissingPart
 from app.repositories.catalog import CatalogRepository
@@ -21,6 +22,7 @@ from app.services.collection_import import (
     CollectionImportError,
     import_rebrickable_collection_csv,
 )
+from app.services.rebrickable import RebrickableClient
 
 router = APIRouter(
     prefix="/api/collection", tags=["collection"], dependencies=[Depends(require_auth)]
@@ -152,8 +154,14 @@ def add_set(
 def import_collection(
     file: Annotated[UploadFile, File()],
     session: Annotated[Session, Depends(get_session)],
+    settings: Annotated[Settings, Depends(get_request_settings)],
 ) -> CollectionImportSummary:
     try:
+        if settings.rebrickable_api_key:
+            with RebrickableClient(settings.rebrickable_api_key) as client:
+                return import_rebrickable_collection_csv(
+                    file.file, session, lookup_missing=client.lookup_set
+                )
         return import_rebrickable_collection_csv(file.file, session)
     except CollectionImportError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error

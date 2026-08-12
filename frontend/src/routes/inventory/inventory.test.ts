@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/svelte';
+import { fireEvent, render, screen, within } from '@testing-library/svelte';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import InventoryPage from './+page.svelte';
 
@@ -19,5 +19,14 @@ describe('inventory page', () => {
 		render(InventoryPage);
 		const image = await screen.findByRole('img', { name: 'Brick 2 x 4 thumbnail' });
 		expect(image).toHaveAttribute('src', 'https://example.com/brick.png');
+	});
+
+	it('opens a larger preview when a part thumbnail is clicked', async () => {
+		render(InventoryPage);
+		await fireEvent.click(await screen.findByRole('button', { name: 'Preview Brick 2 x 4 image' }));
+		const dialog = await screen.findByRole('dialog', { name: 'Brick 2 x 4 image preview' });
+		expect(within(dialog).getByRole('img', { name: 'Brick 2 x 4 preview' })).toHaveAttribute('src', 'https://example.com/brick.png');
+		await fireEvent.click(within(dialog).getByRole('button', { name: 'Close preview' }));
+		expect(screen.queryByRole('dialog', { name: 'Brick 2 x 4 image preview' })).not.toBeInTheDocument();
 	});
 });
