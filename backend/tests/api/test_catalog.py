@@ -7,7 +7,7 @@ from pwdlib import PasswordHash
 from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
-from app.models import AppSetting, CatalogSet, SyncRun
+from app.models import AppSetting, CatalogSet, OwnedSet, SyncRun
 from app.schemas.catalog import RemoteSetSummary
 from app.services.rebrickable import CatalogLookupError, ImportedPart, ImportedSet
 
@@ -59,6 +59,11 @@ def catalog_fixture_dir() -> Path:
             "post",
             "/api/catalog/import",
             {"files": {"file": ("catalog.zip", b"not-a-zip", "application/zip")}},
+        ),
+        (
+            "post",
+            "/api/catalog/discovery-import",
+            {"files": {"file": ("sets.csv", b"Set Number\n10497-1\n", "text/csv")}},
         ),
     ],
 )
@@ -332,6 +337,72 @@ def test_lookup_imports_selected_set_and_returns_sync_summary(
     assert response.status_code == 200
     assert response.json()["set"]["parts"][0]["quantity"] == 2
     assert response.json()["summary"]["sync_run_id"] > 0
+
+
+def test_discovery_import_fetches_catalog_sets_without_adding_collection_rows(
+    authenticated_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    session_factory: sessionmaker[Session],
+) -> None:
+    looked_up: list[str] = []
+
+    class FakeRebrickableClient:
+        def __init__(self, api_key: str | None) -> None:
+            assert api_key == "secret"
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_: object) -> None:
+            pass
+
+        def lookup_set(self, set_num: str) -> ImportedSet:
+            looked_up.append(set_num)
+            return ImportedSet(
+                set_num=set_num,
+                name=f"Candidate {set_num}",
+                year=2026,
+                theme_id=158,
+                num_parts=2,
+                image_url=None,
+                external_url=f"https://example.test/sets/{set_num}",
+                parts=[
+                    ImportedPart(
+                        part_num="3001",
+                        part_name="Brick 2 x 4",
+                        part_image_url=None,
+                        color_id=4,
+                        color_name="Red",
+                        rgb_hex="C91A09",
+                        quantity=2,
+                        is_spare=False,
+                        source_id=set_num,
+                    )
+                ],
+            )
+
+    authenticated_client.app.state.settings.rebrickable_api_key = "secret"
+    monkeypatch.setattr("app.api.catalog.RebrickableClient", FakeRebrickableClient)
+
+    response = authenticated_client.post(
+        "/api/catalog/discovery-import",
+        files={
+            "file": (
+                "discovery.csv",
+                b"Set Number,Quantity\n10497-1,1\n10497-1,1\n31109-1,1\n",
+                "text/csv",
+            )
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["sets_imported"] == 2
+    assert response.json()["rows_skipped"] == 0
+    assert looked_up == ["10497-1", "31109-1"]
+    with session_factory() as session:
+        assert session.get(CatalogSet, "10497-1") is not None
+        assert session.get(CatalogSet, "31109-1") is not None
+        assert session.scalars(select(OwnedSet)).all() == []
 
 
 def test_lookup_missing_api_key_uses_normalized_error(

@@ -90,7 +90,7 @@ const missing = { set_num: '40501-1', name: 'Missing Set', year: 2021, theme_nam
 
 		render(BuildablePage);
 		expect(await screen.findByText('No sets match this view yet.')).toBeInTheDocument();
-		expect(screen.getByRole('link', { name: 'Import a Rebrickable catalog ZIP' })).toHaveAttribute('href', '/settings#catalog-import');
+		expect(screen.getByRole('link', { name: 'Import a discovery CSV or catalog ZIP' })).toHaveAttribute('href', '/settings#catalog-import');
 		expect(screen.getByText(/Catalog imports add set references and inventories for matching/)).toBeInTheDocument();
 		expect(screen.getByText(/Start with exact builds and color swaps/)).toBeInTheDocument();
 		expect(screen.getByText(/Near misses are useful when a tiny parts order would unlock a set/)).toBeInTheDocument();
@@ -116,6 +116,26 @@ const missing = { set_num: '40501-1', name: 'Missing Set', year: 2021, theme_nam
 		expect(navigation.goto).not.toHaveBeenCalled();
 		await fireEvent.click(screen.getByRole('button', { name: 'Retry import' }));
 		await vi.waitFor(() => expect(navigation.goto).toHaveBeenCalledWith('/sets/99999-1'));
+	});
+
+	it('shows a searching indicator while target lookup is in flight', async () => {
+		let resolveSearch!: (response: Response) => void;
+		const search = new Promise<Response>((resolve) => { resolveSearch = resolve; });
+		vi.mocked(globalThis.fetch).mockImplementation((input) => {
+			const url = String(input);
+			if (url === '/api/settings/status') return Promise.resolve(json({ api_key_configured: true }));
+			if (url.startsWith('/api/recommendations')) return Promise.resolve(json({ items: [], total_candidates: 0, offset: 0, limit: 50, max_pieces: 1000, theme: null, year_from: null, year_to: null, hide_owned: false, status: null, sort: 'buildability', direction: 'asc' }));
+			if (url.startsWith('/api/catalog/sets?')) return search;
+			return Promise.resolve(json([]));
+		});
+
+		render(BuildablePage);
+		await fireEvent.input(screen.getByLabelText('Search a build target'), { target: { value: 'Galaxy' } });
+		await new Promise((resolve) => setTimeout(resolve, 260));
+		expect(await screen.findByRole('status', { name: 'Searching catalog' })).toBeInTheDocument();
+		resolveSearch(json([{ set_num: '10497-1', name: 'Galaxy Explorer', year: 2022, theme_name: 'Space', num_parts: 1254, image_url: null, has_local_overrides: false }]));
+		expect(await screen.findByRole('option', { name: /Galaxy Explorer/ })).toBeInTheDocument();
+		expect(screen.queryByRole('status', { name: 'Searching catalog' })).not.toBeInTheDocument();
 	});
 
 	it('shows exact sets before color-substitution sets and can reveal missing sets', async () => {

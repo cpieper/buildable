@@ -34,6 +34,15 @@ class ImportSummary(BaseModel):
     sync_run_id: int
 
 
+class CatalogDiscoveryImportSummary(BaseModel):
+    sets_imported: int
+    rows_skipped: int
+    skipped_set_nums: list[str]
+    warnings: list[str]
+    started_at: datetime
+    completed_at: datetime
+
+
 class CatalogSetSummary(BaseModel):
     set_num: str
     name: str

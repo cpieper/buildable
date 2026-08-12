@@ -10,3 +10,4 @@ frontend/playwright-report/
 task-15-report.md
 .pytest_cache/
 __pycache__/
+.DS_Store
