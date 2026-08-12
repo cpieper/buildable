@@ -4,6 +4,16 @@
 
 Plan several builds together, reserve shared pieces, and explain conflicts before starting a build.
 
+## Recommendation discovery presets
+
+Add guided Buildable Sets views that make the catalog approachable without browsing every set:
+
+- Ready to Build: exact builds and color-swap builds.
+- Almost There: near misses with low missing counts or low missing percentage.
+- Best Reuse: candidates with the highest inventory overlap.
+- Small Builds: quick, low-piece-count builds.
+- Same Themes: candidates in themes already represented in the collection.
+
 ## Loose-piece inventory
 
 Record individual parts that are not associated with an owned official set.

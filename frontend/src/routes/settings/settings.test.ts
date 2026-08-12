@@ -42,6 +42,12 @@ describe('settings page', () => {
 		expect(await screen.findByText('Jumper variants')).toBeInTheDocument();
 	});
 
+	it('describes catalog imports as buildable candidate data instead of owned collection import', async () => {
+		render(SettingsPage);
+		expect(await screen.findByText(/Import set references and inventories/)).toBeInTheDocument();
+		expect(screen.getByText(/This does not add sets to your collection/)).toBeInTheDocument();
+	});
+
 	it('shows structured missing backup dependencies from a 422 validation response', async () => {
 		vi.mocked(globalThis.fetch).mockImplementation(async (input, init) => {
 			const url = String(input); const method = init?.method ?? 'GET';
