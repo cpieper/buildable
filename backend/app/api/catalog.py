@@ -8,6 +8,7 @@ from app.config import Settings
 from app.db import get_session
 from app.repositories.catalog import CatalogRepository, EffectiveSet
 from app.schemas.catalog import (
+    CatalogDiscoveryImportSummary,
     CatalogLookupResponse,
     CatalogSetDetail,
     CatalogSetSummary,
@@ -15,6 +16,7 @@ from app.schemas.catalog import (
     ManualCatalogSetCreate,
     RemoteSetSummary,
 )
+from app.services.catalog_discovery_import import import_discovery_csv
 from app.services.catalog_import import (
     CatalogImportError,
     import_manual_set,
@@ -98,6 +100,24 @@ def import_catalog(
 ) -> ImportSummary:
     try:
         return import_rebrickable_zip(file.file, session)
+    except CatalogImportError as error:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=str(error),
+        ) from error
+
+
+@router.post("/discovery-import", response_model=CatalogDiscoveryImportSummary)
+def import_discovery_list(
+    file: Annotated[UploadFile, File()],
+    session: Annotated[Session, Depends(get_session)],
+    settings: Annotated[Settings, Depends(get_request_settings)],
+) -> CatalogDiscoveryImportSummary:
+    try:
+        with RebrickableClient(settings.rebrickable_api_key) as client:
+            return import_discovery_csv(file.file, session, lookup_set=client.lookup_set)
+    except CatalogLookupError as error:
+        raise _lookup_error(error) from error
     except CatalogImportError as error:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,

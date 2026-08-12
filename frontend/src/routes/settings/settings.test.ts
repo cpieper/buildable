@@ -48,6 +48,25 @@ describe('settings page', () => {
 		expect(screen.getByText(/This does not add sets to your collection/)).toBeInTheDocument();
 	});
 
+	it('imports a discovery CSV as catalog candidates instead of owned collection rows', async () => {
+		const calls: Array<[string, RequestInit | undefined]> = [];
+		vi.mocked(globalThis.fetch).mockImplementation(async (input, init) => {
+			const url = String(input); const method = init?.method ?? 'GET';
+			calls.push([url, init]);
+			if (url === '/api/settings/status') return json({ api_key_configured: true, last_successful_import: null, latest_failed_import: null, catalog_counts: { sets: 3, parts: 4, colors: 2 }, database_label: 'buildable.db', backup_schema: 'buildable.backup/v1' });
+			if (url === '/api/equivalence-groups') return json([]);
+			if (url === '/api/catalog/discovery-import' && method === 'POST') return json({ sets_imported: 2, rows_skipped: 0, skipped_set_nums: [], warnings: [], started_at: '2026-08-12T00:00:00Z', completed_at: '2026-08-12T00:00:01Z' });
+			return json({ detail: `Unhandled ${method} ${url}` }, 500);
+		});
+
+		render(SettingsPage);
+		const file = new File(['Set Number\n10497-1\n31109-1\n'], 'discovery.csv', { type: 'text/csv' });
+		await fireEvent.change(await screen.findByLabelText('Discovery CSV'), { target: { files: [file] } });
+
+		expect(await screen.findByText('Imported 2 discovery sets for matching.')).toBeInTheDocument();
+		expect(calls.some(([url, init]) => url === '/api/catalog/discovery-import' && init?.method === 'POST')).toBe(true);
+	});
+
 	it('shows structured missing backup dependencies from a 422 validation response', async () => {
 		vi.mocked(globalThis.fetch).mockImplementation(async (input, init) => {
 			const url = String(input); const method = init?.method ?? 'GET';
