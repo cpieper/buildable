@@ -1,4 +1,16 @@
-# Buildable
+<div align="center">
+  <img src="frontend/src/lib/assets/buildable-logo.png" alt="Buildable logo: colorful building bricks falling from a box" width="520">
+</div>
+
+<h1 align="center">Buildable</h1>
+
+<p align="center">
+  <a href="https://github.com/cpieper/buildable/actions/workflows/ci.yml"><img src="https://github.com/cpieper/buildable/actions/workflows/ci.yml/badge.svg" alt="CI status"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/cpieper/buildable" alt="Apache 2.0 license"></a>
+  <a href="backend/pyproject.toml"><img src="https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&amp;logoColor=white" alt="Python 3.11 or newer"></a>
+  <a href="frontend/package.json"><img src="https://img.shields.io/badge/Node.js-22%2B-339933?logo=nodedotjs&amp;logoColor=white" alt="Node.js 22 or newer"></a>
+  <a href="frontend/package.json"><img src="https://img.shields.io/badge/Svelte-5-FF3E00?logo=svelte&amp;logoColor=white" alt="Svelte 5"></a>
+</p>
 
 Buildable is a local-first LEGO collection and buildability app. It combines the pieces in your owned official sets, accounts for known missing pieces, and explains which cached sets you can build—including color swaps.
 
