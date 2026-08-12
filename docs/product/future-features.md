@@ -32,7 +32,7 @@ Allow an opt-in scheduled catalog refresh for the Raspberry Pi deployment.
 
 ## MOCs and alternate builds
 
-Support MOCs, alternate builds, and other unofficial build targets alongside official sets.
+Import MOC inventory CSVs and support alternate builds and other unofficial build targets alongside official sets. Discovery target lists can already recognize `MOC-` references and report when Rebrickable cannot provide an API inventory.
 
 ## Household users
 

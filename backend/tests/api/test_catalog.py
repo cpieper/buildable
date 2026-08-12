@@ -405,6 +405,54 @@ def test_discovery_import_fetches_catalog_sets_without_adding_collection_rows(
         assert session.scalars(select(OwnedSet)).all() == []
 
 
+def test_discovery_import_reports_mocs_as_inventory_unsupported(
+    authenticated_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    looked_up: list[str] = []
+
+    class FakeRebrickableClient:
+        def __init__(self, api_key: str | None) -> None:
+            assert api_key == "secret"
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_: object) -> None:
+            pass
+
+        def lookup_set(self, set_num: str) -> ImportedSet:
+            looked_up.append(set_num)
+            raise CatalogLookupError("not_found", "Set not found")
+
+    authenticated_client.app.state.settings.rebrickable_api_key = "secret"
+    monkeypatch.setattr("app.api.catalog.RebrickableClient", FakeRebrickableClient)
+
+    response = authenticated_client.post(
+        "/api/catalog/discovery-import",
+        files={
+            "file": (
+                "discovery.csv",
+                b"Set Number,Quantity\nMOC-268046,1\n",
+                "text/csv",
+            )
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["sets_imported"] == 0
+    assert response.json()["rows_skipped"] == 1
+    assert response.json()["skipped_set_nums"] == ["MOC-268046"]
+    assert looked_up == ["MOC-268046"]
+    assert response.json()["warnings"] == [
+        (
+            "MOC-268046 is a Rebrickable MOC. Rebrickable does not expose "
+            "arbitrary MOC inventories through the API, so import an inventory CSV "
+            "for this MOC to match against it."
+        )
+    ]
+
+
 def test_lookup_missing_api_key_uses_normalized_error(
     authenticated_client: TestClient,
 ) -> None:

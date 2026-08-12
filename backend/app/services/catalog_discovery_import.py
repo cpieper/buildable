@@ -15,8 +15,14 @@ from app.services.rebrickable import (
     import_rebrickable_set,
 )
 
-_SET_NUMBER = re.compile(r"^[0-9]+-[1-9][0-9]*$")
+_OFFICIAL_SET_NUMBER = re.compile(r"^[0-9]+-[1-9][0-9]*$")
+_MOC_SET_NUMBER = re.compile(r"^MOC-[0-9]+$", re.IGNORECASE)
 _SET_HEADERS = ("Set Number", "set_num", "Set Num", "set number")
+_MOC_UNSUPPORTED_MESSAGE = (
+    "{set_num} is a Rebrickable MOC. Rebrickable does not expose arbitrary MOC "
+    "inventories through the API, so import an inventory CSV for this MOC to "
+    "match against it."
+)
 
 
 def import_discovery_csv(
@@ -32,16 +38,15 @@ def import_discovery_csv(
     warnings: list[str] = []
 
     for set_num in set_nums:
-        if not _SET_NUMBER.fullmatch(set_num):
+        if not _is_supported_discovery_set_number(set_num):
             skipped.append(set_num)
-            warnings.append(f"{set_num} is not an official set number.")
+            warnings.append(f"{set_num} is not a supported set or MOC number.")
             continue
         try:
             import_rebrickable_set(lookup_set(set_num), session)
         except (CatalogLookupError, CatalogImportError) as error:
             skipped.append(set_num)
-            message = getattr(error, "message", str(error))
-            warnings.append(f"{set_num} could not be imported from Rebrickable: {message}")
+            warnings.append(_import_warning(set_num, error))
             continue
         imported += 1
 
@@ -94,3 +99,21 @@ def _read_set_numbers(stream: BinaryIO) -> list[str]:
         return rows
     except (csv.Error, UnicodeError, OSError) as error:
         raise CatalogImportError(f"discovery.csv: unable to read CSV: {error}") from error
+
+
+def _is_supported_discovery_set_number(set_num: str) -> bool:
+    return bool(
+        _OFFICIAL_SET_NUMBER.fullmatch(set_num)
+        or _MOC_SET_NUMBER.fullmatch(set_num)
+    )
+
+
+def _import_warning(set_num: str, error: CatalogLookupError | CatalogImportError) -> str:
+    if (
+        _MOC_SET_NUMBER.fullmatch(set_num)
+        and isinstance(error, CatalogLookupError)
+        and error.code == "not_found"
+    ):
+        return _MOC_UNSUPPORTED_MESSAGE.format(set_num=set_num)
+    message = getattr(error, "message", str(error))
+    return f"{set_num} could not be imported from Rebrickable: {message}"
