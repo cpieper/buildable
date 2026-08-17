@@ -12,17 +12,17 @@ dependencies = [
     "fastapi[standard]>=0.141.1",
     "httpx>=0.28,<1",
     "itsdangerous>=2.2,<3",
-    "pwdlib[argon2]>=0.3,<1",
+    "pwdlib[argon2]>=0.3.1,<1",
     "pydantic-settings>=2,<3",
     "python-multipart>=0.0.20,<1",
-    "sqlalchemy>=2,<3",
+    "sqlalchemy>=2.0.52,<3",
 ]
 
 [project.scripts]
 buildable = "app.cli:main"
 
 [build-system]
-requires = ["uv_build>=0.12.3,<0.13.0"]
+requires = ["uv_build>=0.12.4,<0.13.0"]
 build-backend = "uv_build"
 
 [tool.uv.build-backend]
@@ -33,7 +33,7 @@ module-name = "app"
 dev = [
     "pytest>=8,<10",
     "pytest-cov>=6,<8",
-    "ruff>=0.12,<1",
+    "ruff>=0.16.3,<1",
 ]
 
 [tool.pytest.ini_options]
