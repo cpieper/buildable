@@ -34,7 +34,7 @@ make check
 
 ## Catalog setup
 
-Set `BUILDABLE_REBRICKABLE_API_KEY` in a local `.env` to enable targeted Rebrickable lookups. With a key configured, use **Settings** to import a discovery CSV exported from a Rebrickable set list; Buildable will fetch those set inventories into the catalog without adding them to your collection. For broad offline coverage, import a Rebrickable ZIP containing the catalog CSV files for sets, parts, colors, and set inventory. Settings also supports manual set entry for small catalogs or corrections.
+Set `BUILDABLE_REBRICKABLE_API_KEY` in a local `.env` to enable targeted Rebrickable lookups. With a key configured, use **Settings** to import a discovery CSV exported from a Rebrickable set list; Buildable will fetch supported set inventories into the catalog without adding them to your collection. Discovery CSVs may include `MOC-` targets, but Rebrickable does not expose arbitrary MOC inventories through the API, so those rows need an inventory CSV before Buildable can match against them. For broad offline coverage, import a Rebrickable ZIP containing the catalog CSV files for sets, parts, colors, and set inventory. Settings also supports manual set entry for small catalogs or corrections.
 
 Catalog data is the pool of possible build targets, not your owned collection. For discovery, start with exact builds and color swaps, then include missing-piece matches to find near misses that may only need a small parts order.
 
